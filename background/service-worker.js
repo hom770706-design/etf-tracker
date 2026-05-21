@@ -1,6 +1,6 @@
 import { ETF_CODES, ETF_CONFIG } from '../lib/etf-config.js';
 import { saveHoldings, getHoldings, getDates, saveLastFetch, saveFetchError, clearFetchError, getFetchErrors } from '../lib/storage.js';
-import { getOrRefreshIndustryMap } from '../lib/industry.js';
+import { getOrRefreshIndustryMap, lookupIndustry } from '../lib/industry.js';
 import { diffHoldings } from '../lib/comparison.js';
 import { syncToSheets } from '../lib/sheets.js';
 
@@ -106,8 +106,8 @@ async function openETFTabsForCollection(codesToFetch = ETF_CODES, isRetry = fals
 
   // Google Sheets 自動同步（已設定 URL 才執行）
   try {
-    const etfsData = await buildEtfsData(today, results.success);
-    await syncToSheets(today, etfsData);
+    const syncData = await buildEtfsData(today, results.success);
+    await syncToSheets(today, syncData);
     console.log('[ETF Tracker] Google Sheets 同步完成');
   } catch (e) {
     console.warn('[ETF Tracker] Google Sheets 同步失敗:', e.message);
@@ -117,19 +117,38 @@ async function openETFTabsForCollection(codesToFetch = ETF_CODES, isRetry = fals
 }
 
 async function buildEtfsData(date, succeededCodes) {
-  const etfsData = {};
+  const industryMap = await getOrRefreshIndustryMap().catch(() => ({}));
+  const addInd = stocks => stocks.map(s => ({ ...s, industry: lookupIndustry(s.code, industryMap) }));
+
+  const etfs = {};
   for (const code of succeededCodes) {
-    const dates = await getDates(code);
-    const holdings = await getHoldings(code, date);
-    let added = [], removed = [];
+    const dates   = await getDates(code);
+    const holdings = addInd(await getHoldings(code, date));
+    let added = [], removed = [], changed = [];
     if (dates.length >= 2) {
-      const prevDate = dates[dates.length - 2];
-      const prevHoldings = await getHoldings(code, prevDate);
-      ({ added, removed } = diffHoldings(prevHoldings, holdings));
+      const prev = await getHoldings(code, dates[dates.length - 2]);
+      ({ added, removed, changed } = diffHoldings(prev, holdings));
+      added   = addInd(added);
+      removed = addInd(removed);
+      changed = addInd(changed);
     }
-    etfsData[code] = { holdings, added, removed };
+    etfs[code] = { holdings, added, removed, changed };
   }
-  return etfsData;
+
+  // 計算重疊分析
+  const stockMap = {};
+  for (const [code, data] of Object.entries(etfs)) {
+    for (const s of data.holdings) {
+      if (!stockMap[s.code]) stockMap[s.code] = { name: s.name, industry: s.industry || '', etfs: {} };
+      stockMap[s.code].etfs[code] = s.percentage;
+    }
+  }
+  const overlap = Object.entries(stockMap)
+    .filter(([, v]) => Object.keys(v.etfs).length >= 2)
+    .map(([code, v]) => ({ code, ...v, count: Object.keys(v.etfs).length }))
+    .sort((a, b) => b.count - a.count);
+
+  return { etfs, overlap };
 }
 
 async function collectViaTab(etfCode, date, results) {

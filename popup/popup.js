@@ -247,26 +247,29 @@ function stockChip(stock, type) {
 }
 
 function weightChip(stock, type) {
-  const ind = lookupIndustry(stock.code, industryMap);
-  const sign = stock.delta > 0 ? '+' : '';
-  const cls  = type === 'increased' ? 'delta-up' : 'delta-down';
-  return `<span class="stock-chip ${type}"><span class="code">${stock.code}</span>${stock.name}<span class="${cls}"> ${sign}${stock.delta.toFixed(2)}%</span><span class="ind"> ${ind}</span></span>`;
+  const ind      = lookupIndustry(stock.code, industryMap);
+  const sign     = stock.delta > 0 ? '+' : '';
+  const cls      = type === 'increased' ? 'delta-up' : 'delta-down';
+  const shareStr = stock.shareDelta != null && stock.shareDelta !== 0
+    ? ` / ${stock.shareDelta > 0 ? '+' : ''}${stock.shareDelta.toLocaleString()}`
+    : '';
+  return `<span class="stock-chip ${type}"><span class="code">${stock.code}</span>${stock.name}<span class="${cls}"> ${sign}${stock.delta.toFixed(2)}%${shareStr}</span><span class="ind"> ${ind}</span></span>`;
 }
 
 // ── HOLDINGS TAB ─────────────────────────────────────────────────
 async function renderHoldings() {
   const codes = activeEtf === 'all' ? ETF_CODES : [activeEtf];
   const container = document.getElementById('holdings-container');
-  const searchEl = document.getElementById('holdings-search');
+  const searchEl  = document.getElementById('holdings-search');
   container.innerHTML = '';
   searchEl.value = '';
 
-  const allRenderFns = []; // 每個 ETF 一個 renderRows fn，搜尋時同時呼叫
+  const allRenderFns = [];
 
   for (const code of codes) {
     const cfg = ETF_CONFIG[code];
-    const latestDate = await getLatestDate(code);
-    if (!latestDate) {
+    const dates = await getDates(code);
+    if (!dates.length) {
       container.insertAdjacentHTML('beforeend', `
         <div class="holdings-section" style="--card-color:${cfg.color}">
           <div class="holdings-header">
@@ -277,8 +280,18 @@ async function renderHoldings() {
       continue;
     }
 
-    const holdings = await getHoldings(code, latestDate);
+    const latestDate = dates[dates.length - 1];
+    const holdings   = await getHoldings(code, latestDate);
     if (!holdings?.length) continue;
+
+    // 建立今日變化對照表 { code: { deltaPercent, deltaShares, isNew } }
+    const changeMap = {};
+    if (dates.length >= 2) {
+      const prevHoldings = await getHoldings(code, dates[dates.length - 2]);
+      const { added, changed } = diffHoldings(prevHoldings, holdings);
+      for (const s of added)   changeMap[s.code] = { isNew: true };
+      for (const s of changed) changeMap[s.code] = { delta: s.delta, shareDelta: s.shareDelta };
+    }
 
     const sectionId = `holdings-${code}`;
     const tbodyId   = `holdings-tbody-${code}`;
@@ -297,6 +310,7 @@ async function renderHoldings() {
               <th data-col="percentage" class="sort-desc">比重</th>
               <th data-col="shares">股數</th>
               <th data-col="industry">產業</th>
+              <th data-col="change">今日變化</th>
             </tr>
           </thead>
           <tbody id="${tbodyId}"></tbody>
@@ -304,7 +318,7 @@ async function renderHoldings() {
       </div>`);
 
     const tbody = document.getElementById(tbodyId);
-    const sort = { col: 'percentage', dir: 'desc' };
+    const sort  = { col: 'percentage', dir: 'desc' };
 
     const renderRows = (kw = '') => {
       const q = kw.toLowerCase();
@@ -316,14 +330,26 @@ async function renderHoldings() {
       });
 
       tbody.innerHTML = sorted.map(s => {
-        const ind = lookupIndustry(s.code, industryMap);
+        const ind  = lookupIndustry(s.code, industryMap);
         const hide = q && ![s.code, s.name, ind].some(v => v.toLowerCase().includes(q));
+        const chg  = changeMap[s.code];
+        let changeCell = '<td class="col-ind">—</td>';
+        if (chg?.isNew) {
+          changeCell = '<td><span style="color:var(--green);font-size:10px;font-weight:700">▲ 新增</span></td>';
+        } else if (chg?.delta != null) {
+          const sign  = chg.delta > 0 ? '+' : '';
+          const cls   = chg.delta > 0 ? 'delta-up' : 'delta-down';
+          const sSign = chg.shareDelta > 0 ? '+' : '';
+          const sStr  = chg.shareDelta !== 0 ? `<br><span style="font-size:10px">${sSign}${chg.shareDelta.toLocaleString()}</span>` : '';
+          changeCell  = `<td class="${cls}" style="text-align:right">${sign}${chg.delta.toFixed(2)}%${sStr}</td>`;
+        }
         return `<tr${hide ? ' class="hidden-row"' : ''}>
           <td class="col-code">${s.code}</td>
           <td>${s.name}</td>
           <td class="col-pct">${s.percentage.toFixed(2)}%</td>
           <td class="col-shares">${s.shares > 0 ? s.shares.toLocaleString() : '—'}</td>
           <td class="col-ind">${ind}</td>
+          ${changeCell}
         </tr>`;
       }).join('');
     };
@@ -331,13 +357,12 @@ async function renderHoldings() {
     renderRows();
     allRenderFns.push(renderRows);
 
-    // 欄位標頭點擊排序
     document.querySelectorAll(`#${sectionId} thead th`).forEach(th => {
       th.addEventListener('click', () => {
         const col = th.dataset.col;
         sort.dir = sort.col === col
           ? (sort.dir === 'asc' ? 'desc' : 'asc')
-          : (['code', 'name', 'industry'].includes(col) ? 'asc' : 'desc');
+          : (['code', 'name', 'industry', 'change'].includes(col) ? 'asc' : 'desc');
         sort.col = col;
         document.querySelectorAll(`#${sectionId} thead th`).forEach(t =>
           t.classList.remove('sort-asc', 'sort-desc'));
@@ -351,7 +376,6 @@ async function renderHoldings() {
     container.innerHTML = '<p class="no-data">尚無資料，請按 ⟳ 抓取最新資料</p>';
   }
 
-  // 搜尋框：同時過濾所有 ETF 的表格
   searchEl.oninput = () => allRenderFns.forEach(fn => fn(searchEl.value));
 }
 
@@ -535,7 +559,10 @@ async function renderTrend() {
               if (ctx.dataset.label.includes('比重'))
                 return detail.changed.slice(0, 5).map(s => {
                   const sign = s.delta > 0 ? '▲' : '▼';
-                  return `  ${sign}${s.code} ${s.name} ${s.delta > 0 ? '+' : ''}${s.delta.toFixed(2)}%`;
+                  const shareStr = s.shareDelta != null && s.shareDelta !== 0
+                    ? ` (${s.shareDelta > 0 ? '+' : ''}${s.shareDelta.toLocaleString()})`
+                    : '';
+                  return `  ${sign}${s.code} ${s.name} ${s.delta > 0 ? '+' : ''}${s.delta.toFixed(2)}%${shareStr}`;
                 });
               return [];
             }
@@ -833,21 +860,38 @@ async function handleManualSync() {
   setStatus('<span class="spinner"></span>同步到 Google Sheets…');
   try {
     const today = new Date().toISOString().slice(0, 10);
+    const indMap = await getOrRefreshIndustryMap().catch(() => ({}));
+    const addInd = stocks => stocks.map(s => ({ ...s, industry: lookupIndustry(s.code, indMap) }));
+
     const etfsData = {};
     for (const code of ETF_CODES) {
       const dates = await getDates(code);
       if (!dates.length) continue;
       const latestDate = dates[dates.length - 1];
-      const holdings = await getHoldings(code, latestDate);
-      let added = [], removed = [];
+      const holdings = addInd(await getHoldings(code, latestDate));
+      let added = [], removed = [], changed = [];
       if (dates.length >= 2) {
         const prevHoldings = await getHoldings(code, dates[dates.length - 2]);
-        ({ added, removed } = diffHoldings(prevHoldings, holdings));
+        ({ added, removed, changed } = diffHoldings(prevHoldings, holdings));
+        added = addInd(added); removed = addInd(removed); changed = addInd(changed);
       }
-      etfsData[code] = { holdings, added, removed };
+      etfsData[code] = { holdings, added, removed, changed };
     }
     if (!Object.keys(etfsData).length) throw new Error('尚無資料可同步');
-    await syncToSheets(today, etfsData);
+
+    const stockMap = {};
+    for (const [code, data] of Object.entries(etfsData)) {
+      for (const s of data.holdings) {
+        if (!stockMap[s.code]) stockMap[s.code] = { name: s.name, industry: s.industry || '', etfs: {} };
+        stockMap[s.code].etfs[code] = s.percentage;
+      }
+    }
+    const overlap = Object.entries(stockMap)
+      .filter(([, v]) => Object.keys(v.etfs).length >= 2)
+      .map(([code, v]) => ({ code, ...v, count: Object.keys(v.etfs).length }))
+      .sort((a, b) => b.count - a.count);
+
+    await syncToSheets(today, { etfs: etfsData, overlap });
     setStatus('✓ 已同步到 Google Sheets');
   } catch (e) {
     setStatus('✗ 同步失敗: ' + e.message);

@@ -28,8 +28,8 @@
     .etf-btn { padding:5px 14px; border-radius:20px; border:1px solid var(--border); background:transparent; color:var(--muted); font-size:12px; cursor:pointer; white-space:nowrap; transition:all .15s; }
     .etf-btn.active { background:var(--accent); color:#fff; border-color:var(--accent); }
 
-    .tabs { display:flex; background:var(--surface2); border-bottom:1px solid var(--border); }
-    .tab { flex:1; padding:11px 4px; background:transparent; border:none; border-bottom:2px solid transparent; color:var(--muted); font-size:12px; font-weight:500; cursor:pointer; }
+    .tabs { display:flex; background:var(--surface2); border-bottom:1px solid var(--border); overflow-x:auto; -webkit-overflow-scrolling:touch; }
+    .tab { flex:1; padding:11px 4px; background:transparent; border:none; border-bottom:2px solid transparent; color:var(--muted); font-size:12px; font-weight:500; cursor:pointer; white-space:nowrap; min-width:0; }
     .tab.active { color:var(--accent); border-bottom-color:var(--accent); }
 
     main { padding:12px 16px 32px; }
@@ -44,6 +44,18 @@
     .config-box input { width:100%; padding:10px 12px; background:var(--bg); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:13px; margin-bottom:12px; }
     .config-box input:focus { outline:none; border-color:var(--accent); }
     .btn-primary { width:100%; padding:10px; background:var(--accent); color:#fff; border:none; border-radius:6px; font-size:14px; font-weight:600; cursor:pointer; }
+
+    /* Summary cards */
+    .summary-cards { display:grid; gap:10px; }
+    .summary-card { background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:12px 14px; border-left:3px solid var(--accent); }
+    .card-header { display:flex; justify-content:space-between; align-items:baseline; margin-bottom:4px; }
+    .card-etf { font-size:13px; font-weight:700; }
+    .card-date { font-size:11px; color:var(--muted); }
+    .card-name { font-size:12px; color:var(--muted); margin-bottom:10px; }
+    .card-stats { display:grid; grid-template-columns:repeat(5,1fr); gap:6px; }
+    .card-stat { text-align:center; }
+    .card-stat-val { font-size:15px; font-weight:700; }
+    .card-stat-label { font-size:10px; color:var(--muted); margin-top:2px; }
 
     /* Holdings */
     .section { background:var(--surface); border-radius:8px; border:1px solid var(--border); margin-bottom:12px; overflow:hidden; }
@@ -61,9 +73,10 @@
     .col-delta-up   { text-align:right; color:var(--green); font-weight:600; }
     .col-delta-down { text-align:right; color:var(--red);   font-weight:600; }
     .col-r    { text-align:right; color:var(--muted); }
+    .col-new  { color:var(--green); font-size:10px; font-weight:700; text-align:center; }
 
     /* Change list */
-    .change-row { display:flex; align-items:center; gap:8px; padding:8px 14px; border-bottom:1px solid var(--border); font-size:12px; }
+    .change-row { display:flex; align-items:center; gap:8px; padding:8px 14px; border-bottom:1px solid var(--border); font-size:12px; flex-wrap:wrap; }
     .change-row:last-child { border-bottom:none; }
     .badge { padding:2px 8px; border-radius:10px; font-size:11px; font-weight:600; flex-shrink:0; }
     .badge-add  { background:rgba(46,204,113,.2); color:var(--green); }
@@ -72,6 +85,7 @@
     .badge-down { background:rgba(231,76,60,.15);  color:var(--red); }
     .change-etf { margin-left:auto; color:var(--muted); font-size:11px; flex-shrink:0; }
     .change-delta { font-weight:600; flex-shrink:0; }
+    .change-shares { color:var(--muted); font-size:10px; flex-shrink:0; }
 
     .no-data { text-align:center; padding:32px 20px; color:var(--muted); font-size:13px; }
     .loading { text-align:center; padding:40px 20px; color:var(--muted); }
@@ -98,13 +112,15 @@
 </div>
 
 <nav class="tabs">
-  <button class="tab active" data-tab="holdings">持股明細</button>
+  <button class="tab active" data-tab="summary">今日摘要</button>
+  <button class="tab" data-tab="holdings">持股明細</button>
   <button class="tab" data-tab="changes">變化記錄</button>
   <button class="tab" data-tab="overlap">重疊分析</button>
 </nav>
 
 <main>
-  <section id="tab-holdings" class="tab-panel active"><div class="loading">載入中…</div></section>
+  <section id="tab-summary"  class="tab-panel active"><div class="loading">載入中…</div></section>
+  <section id="tab-holdings" class="tab-panel"><div class="loading">載入中…</div></section>
   <section id="tab-changes"  class="tab-panel"><div class="loading">載入中…</div></section>
   <section id="tab-overlap"  class="tab-panel"><div class="loading">載入中…</div></section>
 </main>
@@ -130,7 +146,7 @@ const ETF_CFG = {
 };
 
 let sheetId   = localStorage.getItem('etf_sheet_id') || '';
-let activeTab = 'holdings';
+let activeTab = 'summary';
 let activeEtf = 'all';
 let cache     = {};
 
@@ -141,7 +157,6 @@ document.addEventListener('DOMContentLoaded', () => {
   else loadAll();
 });
 
-// 從背景切回來時，若距上次載入超過 10 分鐘就重新整理資料
 let lastLoadTime = 0;
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && sheetId) {
@@ -209,16 +224,16 @@ async function fetchSheet(name) {
 }
 
 async function loadAll() {
-  ['holdings','changes','overlap'].forEach(t =>
+  ['summary','holdings','changes','overlap'].forEach(t =>
     document.getElementById(`tab-${t}`).innerHTML = '<div class="loading">載入中…</div>');
 
   lastLoadTime = Date.now();
   await Promise.allSettled([
     ...ETF_CODES.map(c => fetchSheet(c)),
-    fetchSheet('變化記錄')
+    fetchSheet('變化記錄'),
+    fetchSheet('今日摘要'),
   ]);
 
-  // last update date
   for (const code of ETF_CODES) {
     const rows = cache[code];
     if (rows?.length && rows[0]['更新日期']) {
@@ -230,9 +245,62 @@ async function loadAll() {
 }
 
 function render() {
-  if (activeTab === 'holdings') renderHoldings();
+  if      (activeTab === 'summary')  renderSummary();
+  else if (activeTab === 'holdings') renderHoldings();
   else if (activeTab === 'changes')  renderChanges();
   else if (activeTab === 'overlap')  renderOverlap();
+}
+
+// ── Summary ───────────────────────────────────────────────────
+function renderSummary() {
+  const allRows = cache['今日摘要'] || [];
+  const rows = activeEtf === 'all' ? allRows : allRows.filter(r => r['ETF'] === activeEtf);
+
+  if (!rows.length) {
+    document.getElementById('tab-summary').innerHTML = '<div class="no-data">尚無今日摘要（同步後才會顯示）</div>';
+    return;
+  }
+
+  let html = '<div class="summary-cards">';
+  for (const r of rows) {
+    const cfg   = ETF_CFG[r['ETF']] || { color:'var(--accent)', name:'' };
+    const total = Number(r['總持股'])   || 0;
+    const add   = Number(r['新增'])     || 0;
+    const rem   = Number(r['移除'])     || 0;
+    const incr  = Number(r['增加比重']) || 0;
+    const decr  = Number(r['減少比重']) || 0;
+    html += `<div class="summary-card" style="border-left-color:${cfg.color}">
+      <div class="card-header">
+        <span class="card-etf" style="color:${cfg.color}">${r['ETF']}</span>
+        <span class="card-date">${r['更新日期'] || ''}</span>
+      </div>
+      <div class="card-name">${r['名稱'] || cfg.name}</div>
+      <div class="card-stats">
+        <div class="card-stat">
+          <div class="card-stat-val" style="color:var(--muted)">${total}</div>
+          <div class="card-stat-label">總持股</div>
+        </div>
+        <div class="card-stat">
+          <div class="card-stat-val" style="color:var(--green)">+${add}</div>
+          <div class="card-stat-label">新增</div>
+        </div>
+        <div class="card-stat">
+          <div class="card-stat-val" style="color:var(--red)">−${rem}</div>
+          <div class="card-stat-label">移除</div>
+        </div>
+        <div class="card-stat">
+          <div class="card-stat-val" style="color:var(--green)">▲${incr}</div>
+          <div class="card-stat-label">增比重</div>
+        </div>
+        <div class="card-stat">
+          <div class="card-stat-val" style="color:var(--red)">▼${decr}</div>
+          <div class="card-stat-label">減比重</div>
+        </div>
+      </div>
+    </div>`;
+  }
+  html += '</div>';
+  document.getElementById('tab-summary').innerHTML = html;
 }
 
 // ── Holdings ──────────────────────────────────────────────────
@@ -250,20 +318,48 @@ function renderHoldings() {
         </div></div>`;
       continue;
     }
-    const date = rows[0]?.['更新日期'] || '';
+    const date     = rows[0]?.['更新日期'] || '';
+    const hasDelta = rows.some(r => r['動作'] && r['動作'] !== '');
     html += `<div class="section" style="border-left:3px solid ${cfg.color}">
       <div class="section-header">
         <span class="section-title" style="color:${cfg.color}">${code} · ${cfg.name}</span>
         <span class="section-meta">${date} · ${rows.length} 檔</span>
       </div>
       <table>
-        <thead><tr><th>代號</th><th>名稱</th><th style="text-align:right">比重</th><th style="text-align:right">股數</th></tr></thead>
-        <tbody>${rows.map(r => `<tr>
-          <td class="col-code">${r['代號']}</td>
-          <td>${r['名稱']}</td>
-          <td class="col-pct">${Number(r['比重(%)']).toFixed(2)}%</td>
-          <td class="col-r">${Number(r['股數']) > 0 ? Number(r['股數']).toLocaleString() : '—'}</td>
-        </tr>`).join('')}</tbody>
+        <thead><tr>
+          <th>代號</th><th>名稱</th>
+          <th style="text-align:right">比重</th>
+          <th style="text-align:right">股數</th>
+          <th>產業</th>
+          ${hasDelta ? '<th style="text-align:right">今日變化</th>' : ''}
+        </tr></thead>
+        <tbody>${rows.map(r => {
+          let deltaCell = '';
+          if (hasDelta) {
+            const action = r['動作'];
+            if (action === '新增') {
+              deltaCell = `<td class="col-new">▲ 新增</td>`;
+            } else if (action === '增加比重' || action === '減少比重') {
+              const dv = Number(r['今日Δ%']);
+              const ds = Number(r['今日Δ股數']);
+              const cls  = dv > 0 ? 'col-delta-up' : 'col-delta-down';
+              const sign = dv > 0 ? '+' : '';
+              const sSign = ds > 0 ? '+' : '';
+              const sStr = ds !== 0 ? `<br><span style="color:var(--muted);font-size:10px">${sSign}${ds.toLocaleString()}</span>` : '';
+              deltaCell = `<td class="${cls}">${sign}${dv.toFixed(2)}%${sStr}</td>`;
+            } else {
+              deltaCell = `<td class="col-r">—</td>`;
+            }
+          }
+          return `<tr>
+            <td class="col-code">${r['代號']}</td>
+            <td>${r['名稱']}</td>
+            <td class="col-pct">${Number(r['比重(%)']).toFixed(2)}%</td>
+            <td class="col-r">${Number(r['股數']) > 0 ? Number(r['股數']).toLocaleString() : '—'}</td>
+            <td style="color:var(--muted);font-size:11px">${r['產業'] || ''}</td>
+            ${deltaCell}
+          </tr>`;
+        }).join('')}</tbody>
       </table>
     </div>`;
   }
@@ -279,7 +375,6 @@ function renderChanges() {
     return;
   }
 
-  // Group by date descending
   const byDate = {};
   for (const r of rows) {
     const d = String(r['日期']).slice(0, 10);
@@ -299,16 +394,24 @@ function renderChanges() {
       ${items.map(r => {
         const action = r['動作'];
         let badgeCls = 'badge-add', label = '＋新增';
-        if (action === '移除') { badgeCls = 'badge-rem'; label = '－移除'; }
+        if (action === '移除')      { badgeCls = 'badge-rem';  label = '－移除'; }
         else if (action === '增加比重') { badgeCls = 'badge-up';   label = '▲比重'; }
         else if (action === '減少比重') { badgeCls = 'badge-down'; label = '▼比重'; }
         const cfg = ETF_CFG[r['ETF']] || {};
-        const delta = r['比重變化'] ? `<span class="change-delta" style="color:${action.includes('增') ? 'var(--green)' : 'var(--red)'}">${Number(r['比重變化']) > 0 ? '+' : ''}${Number(r['比重變化']).toFixed(2)}%</span>` : '';
+        const isWeight = action === '增加比重' || action === '減少比重';
+        const dv = Number(r['比重變化']);
+        const ds = Number(r['Δ股數']);
+        const deltaHtml = isWeight && !isNaN(dv) && dv !== 0
+          ? `<span class="change-delta" style="color:${dv>0?'var(--green)':'var(--red)'}">${dv>0?'+':''}${dv.toFixed(2)}%</span>`
+          : '';
+        const sharesHtml = isWeight && !isNaN(ds) && ds !== 0
+          ? `<span class="change-shares">${ds>0?'+':''}${ds.toLocaleString()}</span>`
+          : '';
         return `<div class="change-row">
           <span class="badge ${badgeCls}">${label}</span>
           <span class="col-code" style="color:${cfg.color||'var(--accent)'}">${r['代號']}</span>
           <span>${r['名稱']}</span>
-          ${delta}
+          ${deltaHtml}${sharesHtml}
           <span class="change-etf">${r['ETF']}</span>
         </div>`;
       }).join('')}
@@ -323,7 +426,7 @@ function renderOverlap() {
   for (const code of ETF_CODES) {
     for (const r of (cache[code] || [])) {
       if (!r['代號']) continue;
-      if (!stockMap[r['代號']]) stockMap[r['代號']] = { name: r['名稱'], etfs: {} };
+      if (!stockMap[r['代號']]) stockMap[r['代號']] = { name: r['名稱'], industry: r['產業'] || '', etfs: {} };
       stockMap[r['代號']].etfs[code] = Number(r['比重(%)']) || 0;
     }
   }
@@ -358,12 +461,13 @@ function renderOverlap() {
       </div>
       <table>
         <thead><tr>
-          <th>代號</th><th>名稱</th>
+          <th>代號</th><th>名稱</th><th>產業</th>
           ${etfsWithData.map(c => `<th style="color:${ETF_CFG[c].color};text-align:right">${c}</th>`).join('')}
         </tr></thead>
         <tbody>${stocks.map(s => `<tr>
           <td class="col-code">${s.code}</td>
           <td>${s.name}</td>
+          <td style="color:var(--muted);font-size:11px">${s.industry}</td>
           ${etfsWithData.map(c => s.etfs[c] !== undefined
             ? `<td class="col-pct">${s.etfs[c].toFixed(2)}%</td>`
             : `<td class="col-r">—</td>`
