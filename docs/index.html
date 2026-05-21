@@ -4,6 +4,12 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
   <title>主動ETF 追蹤器</title>
+  <meta name="theme-color" content="#1a1d27">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="ETF追蹤">
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icon.svg">
   <style>
     :root {
       --bg:#0f1117; --surface:#1a1d27; --surface2:#252836; --border:#2e3148;
@@ -135,6 +141,17 @@ document.addEventListener('DOMContentLoaded', () => {
   else loadAll();
 });
 
+// 從背景切回來時，若距上次載入超過 10 分鐘就重新整理資料
+let lastLoadTime = 0;
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && sheetId) {
+    if (Date.now() - lastLoadTime > 10 * 60 * 1000) {
+      cache = {};
+      loadAll();
+    }
+  }
+});
+
 function setupListeners() {
   document.querySelectorAll('.tab').forEach(b =>
     b.addEventListener('click', () => switchTab(b.dataset.tab)));
@@ -195,6 +212,7 @@ async function loadAll() {
   ['holdings','changes','overlap'].forEach(t =>
     document.getElementById(`tab-${t}`).innerHTML = '<div class="loading">載入中…</div>');
 
+  lastLoadTime = Date.now();
   await Promise.allSettled([
     ...ETF_CODES.map(c => fetchSheet(c)),
     fetchSheet('變化記錄')

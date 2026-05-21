@@ -1,0 +1,13 @@
+{
+  "name": "主動ETF 追蹤器",
+  "short_name": "ETF追蹤",
+  "description": "台灣主動ETF成分股每日追蹤",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#0f1117",
+  "theme_color": "#1a1d27",
+  "orientation": "portrait-primary",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
