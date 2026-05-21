@@ -1,0 +1,12 @@
+{
+  "name": "etf-tracker-extension",
+  "version": "1.0.0",
+  "description": "台灣主動ETF成分股追蹤器 Chrome Extension",
+  "scripts": {
+    "setup": "npm install && node scripts/copy-deps.js",
+    "dev": "echo 開啟 chrome://extensions 並載入此資料夾"
+  },
+  "devDependencies": {
+    "chart.js": "^4.4.0"
+  }
+}

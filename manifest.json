@@ -1,0 +1,50 @@
+{
+  "manifest_version": 3,
+  "name": "台灣主動ETF成分股追蹤器",
+  "version": "1.1.0",
+  "description": "每日追蹤 00980A、00981A、00982A、00403A 成分股變化與趨勢分析",
+  "permissions": [
+    "storage",
+    "unlimitedStorage",
+    "alarms",
+    "tabs",
+    "scripting"
+  ],
+  "host_permissions": [
+    "https://www.twse.com.tw/*",
+    "https://wwwc.twse.com.tw/*",
+    "https://isin.twse.com.tw/*",
+    "https://openapi.twse.com.tw/*",
+    "https://www.nomurafunds.com.tw/*",
+    "https://money.nomurafunds.com.tw/*",
+    "https://www.ezmoney.com.tw/*",
+    "https://www.capitalfund.com.tw/*",
+    "https://script.google.com/*",
+    "https://script.googleusercontent.com/*"
+  ],
+  "background": {
+    "service_worker": "background/service-worker.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.twse.com.tw/zh/ETFortune/etfInfo/*",
+        "https://wwwc.twse.com.tw/zh/ETFortune-institute/etfInfo/*",
+        "https://www.nomurafunds.com.tw/ETFWEB/*",
+        "https://money.nomurafunds.com.tw/etf/*",
+        "https://www.ezmoney.com.tw/ETF/*",
+        "https://www.capitalfund.com.tw/etf/*"
+      ],
+      "js": ["content/extract.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_title": "主動ETF成分股追蹤器"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  }
+}

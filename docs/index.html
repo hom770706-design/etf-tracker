@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <title>主動ETF 追蹤器</title>
+  <style>
+    :root {
+      --bg:#0f1117; --surface:#1a1d27; --surface2:#252836; --border:#2e3148;
+      --text:#e2e8f0; --muted:#8892a4; --accent:#4f6ef7;
+      --green:#2ecc71; --red:#e74c3c; --yellow:#f39c12;
+    }
+    *,*::before,*::after { box-sizing:border-box; margin:0; padding:0; }
+    body { background:var(--bg); color:var(--text); font-family:-apple-system,'PingFang TC','Microsoft JhengHei',sans-serif; font-size:14px; }
+
+    header { display:flex; align-items:center; justify-content:space-between; padding:12px 16px; background:var(--surface); border-bottom:1px solid var(--border); position:sticky; top:0; z-index:10; }
+    header h1 { font-size:16px; font-weight:700; }
+    .subtitle { font-size:11px; color:var(--muted); margin-top:2px; }
+    .icon-btn { background:transparent; border:1px solid var(--border); color:var(--muted); width:36px; height:36px; border-radius:6px; cursor:pointer; font-size:17px; display:flex; align-items:center; justify-content:center; }
+
+    .etf-filter { display:flex; gap:6px; padding:10px 16px; background:var(--surface); border-bottom:1px solid var(--border); overflow-x:auto; -webkit-overflow-scrolling:touch; }
+    .etf-btn { padding:5px 14px; border-radius:20px; border:1px solid var(--border); background:transparent; color:var(--muted); font-size:12px; cursor:pointer; white-space:nowrap; transition:all .15s; }
+    .etf-btn.active { background:var(--accent); color:#fff; border-color:var(--accent); }
+
+    .tabs { display:flex; background:var(--surface2); border-bottom:1px solid var(--border); }
+    .tab { flex:1; padding:11px 4px; background:transparent; border:none; border-bottom:2px solid transparent; color:var(--muted); font-size:12px; font-weight:500; cursor:pointer; }
+    .tab.active { color:var(--accent); border-bottom-color:var(--accent); }
+
+    main { padding:12px 16px 32px; }
+    .tab-panel { display:none; } .tab-panel.active { display:block; }
+
+    /* Config overlay */
+    .overlay { position:fixed; inset:0; background:rgba(0,0,0,.85); display:flex; align-items:center; justify-content:center; z-index:100; padding:20px; }
+    .overlay.hidden { display:none; }
+    .config-box { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:20px; width:100%; max-width:420px; }
+    .config-box h2 { font-size:16px; margin-bottom:8px; }
+    .config-box p { font-size:12px; color:var(--muted); line-height:1.7; margin-bottom:14px; }
+    .config-box input { width:100%; padding:10px 12px; background:var(--bg); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:13px; margin-bottom:12px; }
+    .config-box input:focus { outline:none; border-color:var(--accent); }
+    .btn-primary { width:100%; padding:10px; background:var(--accent); color:#fff; border:none; border-radius:6px; font-size:14px; font-weight:600; cursor:pointer; }
+
+    /* Holdings */
+    .section { background:var(--surface); border-radius:8px; border:1px solid var(--border); margin-bottom:12px; overflow:hidden; }
+    .section-header { padding:9px 14px; background:var(--surface2); border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; }
+    .section-title { font-size:13px; font-weight:600; }
+    .section-meta { font-size:11px; color:var(--muted); }
+
+    table { width:100%; border-collapse:collapse; font-size:12px; }
+    th { padding:7px 10px; text-align:left; color:var(--muted); font-weight:600; border-bottom:1px solid var(--border); background:var(--surface2); white-space:nowrap; }
+    td { padding:7px 10px; border-bottom:1px solid var(--border); }
+    tr:last-child td { border-bottom:none; }
+    tr:hover td { background:rgba(255,255,255,.02); }
+    .col-code { font-weight:700; color:var(--accent); font-family:monospace; }
+    .col-pct  { text-align:right; color:var(--green); }
+    .col-delta-up   { text-align:right; color:var(--green); font-weight:600; }
+    .col-delta-down { text-align:right; color:var(--red);   font-weight:600; }
+    .col-r    { text-align:right; color:var(--muted); }
+
+    /* Change list */
+    .change-row { display:flex; align-items:center; gap:8px; padding:8px 14px; border-bottom:1px solid var(--border); font-size:12px; }
+    .change-row:last-child { border-bottom:none; }
+    .badge { padding:2px 8px; border-radius:10px; font-size:11px; font-weight:600; flex-shrink:0; }
+    .badge-add  { background:rgba(46,204,113,.2); color:var(--green); }
+    .badge-rem  { background:rgba(231,76,60,.2);  color:var(--red); }
+    .badge-up   { background:rgba(46,204,113,.15); color:var(--green); }
+    .badge-down { background:rgba(231,76,60,.15);  color:var(--red); }
+    .change-etf { margin-left:auto; color:var(--muted); font-size:11px; flex-shrink:0; }
+    .change-delta { font-weight:600; flex-shrink:0; }
+
+    .no-data { text-align:center; padding:32px 20px; color:var(--muted); font-size:13px; }
+    .loading { text-align:center; padding:40px 20px; color:var(--muted); }
+    .error   { color:var(--red); font-size:12px; margin-top:6px; }
+    .info    { font-size:11px; color:var(--muted); margin-bottom:10px; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>主動ETF 追蹤器</h1>
+    <div id="last-update" class="subtitle">載入中…</div>
+  </div>
+  <button id="btn-config" class="icon-btn">⚙</button>
+</header>
+
+<div class="etf-filter">
+  <button class="etf-btn active" data-etf="all">全部</button>
+  <button class="etf-btn" data-etf="00980A">00980A</button>
+  <button class="etf-btn" data-etf="00981A">00981A</button>
+  <button class="etf-btn" data-etf="00982A">00982A</button>
+  <button class="etf-btn" data-etf="00403A">00403A</button>
+</div>
+
+<nav class="tabs">
+  <button class="tab active" data-tab="holdings">持股明細</button>
+  <button class="tab" data-tab="changes">變化記錄</button>
+  <button class="tab" data-tab="overlap">重疊分析</button>
+</nav>
+
+<main>
+  <section id="tab-holdings" class="tab-panel active"><div class="loading">載入中…</div></section>
+  <section id="tab-changes"  class="tab-panel"><div class="loading">載入中…</div></section>
+  <section id="tab-overlap"  class="tab-panel"><div class="loading">載入中…</div></section>
+</main>
+
+<div id="config-overlay" class="overlay">
+  <div class="config-box">
+    <h2>⚙ 設定 Google Sheets</h2>
+    <p>請輸入你的 Google Sheets <strong>試算表 ID</strong>（URL 中 /d/ 和 /edit 之間的長字串）。<br>
+       試算表須設定為「<strong>任何知道連結的人均可檢視</strong>」。</p>
+    <input id="sheet-id-input" placeholder="貼上試算表 ID…" autocomplete="off" spellcheck="false">
+    <button id="btn-save-config" class="btn-primary">儲存並載入</button>
+    <p id="config-error" class="error"></p>
+  </div>
+</div>
+
+<script>
+const ETF_CODES = ['00980A','00981A','00982A','00403A'];
+const ETF_CFG = {
+  '00980A': { name:'野村臺灣智慧優選', color:'#4f6ef7' },
+  '00981A': { name:'統一台股增長',     color:'#2ecc71' },
+  '00982A': { name:'群益台灣精選強棒', color:'#f39c12' },
+  '00403A': { name:'統一台股精選',     color:'#e74c3c' },
+};
+
+let sheetId   = localStorage.getItem('etf_sheet_id') || '';
+let activeTab = 'holdings';
+let activeEtf = 'all';
+let cache     = {};
+
+// ── Boot ──────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  setupListeners();
+  if (!sheetId) showConfig();
+  else loadAll();
+});
+
+function setupListeners() {
+  document.querySelectorAll('.tab').forEach(b =>
+    b.addEventListener('click', () => switchTab(b.dataset.tab)));
+  document.querySelectorAll('.etf-btn').forEach(b =>
+    b.addEventListener('click', () => switchEtf(b.dataset.etf)));
+  document.getElementById('btn-config').addEventListener('click', showConfig);
+  document.getElementById('btn-save-config').addEventListener('click', async () => {
+    const id = document.getElementById('sheet-id-input').value.trim();
+    if (!id) { document.getElementById('config-error').textContent = '請輸入試算表 ID'; return; }
+    sheetId = id;
+    localStorage.setItem('etf_sheet_id', id);
+    document.getElementById('config-overlay').classList.add('hidden');
+    cache = {};
+    await loadAll();
+  });
+}
+
+function showConfig() {
+  document.getElementById('sheet-id-input').value = sheetId;
+  document.getElementById('config-error').textContent = '';
+  document.getElementById('config-overlay').classList.remove('hidden');
+}
+
+function switchTab(tab) {
+  activeTab = tab;
+  document.querySelectorAll('.tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === `tab-${tab}`));
+  render();
+}
+
+function switchEtf(etf) {
+  activeEtf = etf;
+  document.querySelectorAll('.etf-btn').forEach(b => b.classList.toggle('active', b.dataset.etf === etf));
+  render();
+}
+
+// ── Fetch ─────────────────────────────────────────────────────
+async function fetchSheet(name) {
+  if (cache[name]) return cache[name];
+  const url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(name)}`;
+  const resp = await fetch(url);
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  const text = await resp.text();
+  const m = text.match(/google\.visualization\.Query\.setResponse\(([\s\S]*?)\);\s*$/);
+  if (!m) throw new Error('回應格式異常，請確認試算表是否公開');
+  const { status, table } = JSON.parse(m[1]);
+  if (status !== 'ok') throw new Error('讀取失敗，確認試算表共用設定');
+  const headers = table.cols.map(c => c.label || c.id);
+  cache[name] = (table.rows || []).map(row => {
+    const obj = {};
+    (row.c || []).forEach((cell, i) => { obj[headers[i]] = cell?.v ?? ''; });
+    return obj;
+  });
+  return cache[name];
+}
+
+async function loadAll() {
+  ['holdings','changes','overlap'].forEach(t =>
+    document.getElementById(`tab-${t}`).innerHTML = '<div class="loading">載入中…</div>');
+
+  await Promise.allSettled([
+    ...ETF_CODES.map(c => fetchSheet(c)),
+    fetchSheet('變化記錄')
+  ]);
+
+  // last update date
+  for (const code of ETF_CODES) {
+    const rows = cache[code];
+    if (rows?.length && rows[0]['更新日期']) {
+      document.getElementById('last-update').textContent = `更新: ${rows[0]['更新日期']}`;
+      break;
+    }
+  }
+  render();
+}
+
+function render() {
+  if (activeTab === 'holdings') renderHoldings();
+  else if (activeTab === 'changes')  renderChanges();
+  else if (activeTab === 'overlap')  renderOverlap();
+}
+
+// ── Holdings ──────────────────────────────────────────────────
+function renderHoldings() {
+  const codes = activeEtf === 'all' ? ETF_CODES : [activeEtf];
+  let html = '';
+  for (const code of codes) {
+    const rows = cache[code];
+    const cfg  = ETF_CFG[code];
+    if (!rows?.length) {
+      html += `<div class="section" style="border-left:3px solid ${cfg.color}">
+        <div class="section-header">
+          <span class="section-title" style="color:${cfg.color}">${code} · ${cfg.name}</span>
+          <span class="section-meta">尚無資料</span>
+        </div></div>`;
+      continue;
+    }
+    const date = rows[0]?.['更新日期'] || '';
+    html += `<div class="section" style="border-left:3px solid ${cfg.color}">
+      <div class="section-header">
+        <span class="section-title" style="color:${cfg.color}">${code} · ${cfg.name}</span>
+        <span class="section-meta">${date} · ${rows.length} 檔</span>
+      </div>
+      <table>
+        <thead><tr><th>代號</th><th>名稱</th><th style="text-align:right">比重</th><th style="text-align:right">股數</th></tr></thead>
+        <tbody>${rows.map(r => `<tr>
+          <td class="col-code">${r['代號']}</td>
+          <td>${r['名稱']}</td>
+          <td class="col-pct">${Number(r['比重(%)']).toFixed(2)}%</td>
+          <td class="col-r">${Number(r['股數']) > 0 ? Number(r['股數']).toLocaleString() : '—'}</td>
+        </tr>`).join('')}</tbody>
+      </table>
+    </div>`;
+  }
+  document.getElementById('tab-holdings').innerHTML = html || '<div class="no-data">尚無資料</div>';
+}
+
+// ── Changes ───────────────────────────────────────────────────
+function renderChanges() {
+  const allRows = cache['變化記錄'] || [];
+  const rows = activeEtf === 'all' ? allRows : allRows.filter(r => r['ETF'] === activeEtf);
+  if (!rows.length) {
+    document.getElementById('tab-changes').innerHTML = '<div class="no-data">尚無變化記錄</div>';
+    return;
+  }
+
+  // Group by date descending
+  const byDate = {};
+  for (const r of rows) {
+    const d = String(r['日期']).slice(0, 10);
+    if (!byDate[d]) byDate[d] = [];
+    byDate[d].push(r);
+  }
+  const dates = Object.keys(byDate).sort().reverse().slice(0, 30);
+
+  let html = '';
+  for (const date of dates) {
+    const items = byDate[date];
+    html += `<div class="section" style="margin-bottom:12px">
+      <div class="section-header">
+        <span class="section-title">${date}</span>
+        <span class="section-meta">${items.length} 筆</span>
+      </div>
+      ${items.map(r => {
+        const action = r['動作'];
+        let badgeCls = 'badge-add', label = '＋新增';
+        if (action === '移除') { badgeCls = 'badge-rem'; label = '－移除'; }
+        else if (action === '增加比重') { badgeCls = 'badge-up';   label = '▲比重'; }
+        else if (action === '減少比重') { badgeCls = 'badge-down'; label = '▼比重'; }
+        const cfg = ETF_CFG[r['ETF']] || {};
+        const delta = r['比重變化'] ? `<span class="change-delta" style="color:${action.includes('增') ? 'var(--green)' : 'var(--red)'}">${Number(r['比重變化']) > 0 ? '+' : ''}${Number(r['比重變化']).toFixed(2)}%</span>` : '';
+        return `<div class="change-row">
+          <span class="badge ${badgeCls}">${label}</span>
+          <span class="col-code" style="color:${cfg.color||'var(--accent)'}">${r['代號']}</span>
+          <span>${r['名稱']}</span>
+          ${delta}
+          <span class="change-etf">${r['ETF']}</span>
+        </div>`;
+      }).join('')}
+    </div>`;
+  }
+  document.getElementById('tab-changes').innerHTML = html;
+}
+
+// ── Overlap ───────────────────────────────────────────────────
+function renderOverlap() {
+  const stockMap = {};
+  for (const code of ETF_CODES) {
+    for (const r of (cache[code] || [])) {
+      if (!r['代號']) continue;
+      if (!stockMap[r['代號']]) stockMap[r['代號']] = { name: r['名稱'], etfs: {} };
+      stockMap[r['代號']].etfs[code] = Number(r['比重(%)']) || 0;
+    }
+  }
+
+  let overlaps = Object.entries(stockMap)
+    .filter(([, v]) => Object.keys(v.etfs).length >= 2)
+    .map(([code, v]) => ({ code, ...v, count: Object.keys(v.etfs).length }))
+    .sort((a, b) => b.count - a.count);
+
+  if (activeEtf !== 'all') overlaps = overlaps.filter(s => s.etfs[activeEtf] !== undefined);
+
+  if (!overlaps.length) {
+    document.getElementById('tab-overlap').innerHTML = '<div class="no-data">尚無重疊持股</div>';
+    return;
+  }
+
+  const etfsWithData = ETF_CODES.filter(c => cache[c]?.length);
+  const groups = {};
+  for (const s of overlaps) {
+    if (!groups[s.count]) groups[s.count] = [];
+    groups[s.count].push(s);
+  }
+
+  let html = `<p class="info">共 <strong style="color:var(--text)">${overlaps.length}</strong> 檔被 2 檔以上 ETF 同時持有</p>`;
+  for (const count of Object.keys(groups).sort((a,b) => b-a)) {
+    const stocks = groups[count];
+    const label  = count == etfsWithData.length ? '全部' : `${count} 檔`;
+    html += `<div class="section" style="margin-bottom:12px">
+      <div class="section-header">
+        <span class="section-title">${label} ETF 同持</span>
+        <span class="section-meta">${stocks.length} 支股票</span>
+      </div>
+      <table>
+        <thead><tr>
+          <th>代號</th><th>名稱</th>
+          ${etfsWithData.map(c => `<th style="color:${ETF_CFG[c].color};text-align:right">${c}</th>`).join('')}
+        </tr></thead>
+        <tbody>${stocks.map(s => `<tr>
+          <td class="col-code">${s.code}</td>
+          <td>${s.name}</td>
+          ${etfsWithData.map(c => s.etfs[c] !== undefined
+            ? `<td class="col-pct">${s.etfs[c].toFixed(2)}%</td>`
+            : `<td class="col-r">—</td>`
+          ).join('')}
+        </tr>`).join('')}</tbody>
+      </table>
+    </div>`;
+  }
+  document.getElementById('tab-overlap').innerHTML = html;
+}
+</script>
+</body>
+</html>

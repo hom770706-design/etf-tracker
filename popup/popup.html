@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>主動ETF成分股追蹤器</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+
+<!-- ── Header ─────────────────────────────────────────────────────── -->
+<header>
+  <div class="header-left">
+    <h1>主動ETF追蹤器</h1>
+    <span id="last-update" class="muted">載入中…</span>
+  </div>
+  <div class="header-right">
+    <button id="btn-refresh" class="icon-btn" title="立即抓取最新資料">⟳</button>
+    <button id="btn-sync-sheets" class="icon-btn" title="立即同步到 Google Sheets">↑</button>
+    <button id="btn-import" class="icon-btn" title="手動匯入資料">⤓</button>
+    <button id="btn-settings" class="icon-btn" title="設定">⚙</button>
+  </div>
+</header>
+
+<!-- ── ETF Filter ─────────────────────────────────────────────────── -->
+<div class="etf-filter">
+  <button class="etf-btn active" data-etf="all">全部</button>
+  <button class="etf-btn" data-etf="00980A">00980A</button>
+  <button class="etf-btn" data-etf="00981A">00981A</button>
+  <button class="etf-btn" data-etf="00982A">00982A</button>
+  <button class="etf-btn" data-etf="00403A">00403A</button>
+</div>
+
+<!-- ── Tab Navigation ─────────────────────────────────────────────── -->
+<nav class="tabs">
+  <button class="tab active" data-tab="today">今日變化</button>
+  <button class="tab" data-tab="holdings">持股明細</button>
+  <button class="tab" data-tab="trend">趨勢圖</button>
+  <button class="tab" data-tab="industry">產業分布</button>
+  <button class="tab" data-tab="stocks">股票分析</button>
+  <button class="tab" data-tab="overlap">重疊分析</button>
+</nav>
+
+<!-- ── Content Panels ─────────────────────────────────────────────── -->
+<main>
+
+  <!-- TODAY TAB -->
+  <section id="tab-today" class="tab-panel active">
+    <div id="today-summary" class="summary-grid">
+      <!-- 動態填入各ETF今日摘要卡 -->
+    </div>
+    <div id="today-details">
+      <!-- 動態填入新增/移除明細 -->
+    </div>
+  </section>
+
+  <!-- HOLDINGS TAB -->
+  <section id="tab-holdings" class="tab-panel">
+    <div class="holdings-search-wrap">
+      <input type="text" id="holdings-search" placeholder="搜尋股票代號或名稱…" autocomplete="off">
+    </div>
+    <div id="holdings-container"></div>
+  </section>
+
+  <!-- TREND TAB -->
+  <section id="tab-trend" class="tab-panel">
+    <div class="chart-container">
+      <canvas id="chart-trend"></canvas>
+    </div>
+    <div class="chart-legend" id="trend-legend"></div>
+  </section>
+
+  <!-- INDUSTRY TAB -->
+  <section id="tab-industry" class="tab-panel">
+    <div class="industry-layout">
+      <div class="chart-container half">
+        <h3 class="chart-title">新增股票產業分布</h3>
+        <canvas id="chart-industry-added"></canvas>
+      </div>
+      <div class="chart-container half">
+        <h3 class="chart-title">移除股票產業分布</h3>
+        <canvas id="chart-industry-removed"></canvas>
+      </div>
+    </div>
+    <div id="industry-table-container" class="industry-table-wrap"></div>
+  </section>
+
+  <!-- OVERLAP TAB -->
+  <section id="tab-overlap" class="tab-panel">
+    <div id="overlap-container"></div>
+  </section>
+
+  <!-- STOCKS TAB -->
+  <section id="tab-stocks" class="tab-panel">
+    <div class="sub-tabs">
+      <button class="sub-tab active" data-subtab="frequency">出現頻率</button>
+      <button class="sub-tab" data-subtab="timeline">進出時間軸</button>
+    </div>
+
+    <div id="subtab-frequency" class="sub-panel active">
+      <div class="chart-container tall">
+        <canvas id="chart-frequency"></canvas>
+      </div>
+    </div>
+
+    <div id="subtab-timeline" class="sub-panel">
+      <div id="timeline-container">
+        <!-- 動態填入 Gantt 型時間軸 -->
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<!-- ── Status Bar ─────────────────────────────────────────────────── -->
+<footer>
+  <span id="status-msg" class="muted"></span>
+  <span id="error-indicator" class="error-dot hidden" title="有抓取錯誤，點擊查看"></span>
+</footer>
+
+<!-- ── Manual Import Modal ───────────────────────────────────────── -->
+<div id="modal-import" class="modal hidden">
+  <div class="modal-box">
+    <h2>手動匯入持股資料</h2>
+    <p class="muted">從各 ETF 官網複製每日持股 JSON，貼到下方。<br>
+      格式: <code>[{"code":"2330","name":"台積電","shares":1000,"percentage":5.5},...]</code>
+    </p>
+    <select id="import-etf-select">
+      <option value="00980A">00980A 野村臺灣智慧優選</option>
+      <option value="00981A">00981A 統一台股增長</option>
+      <option value="00982A">00982A 群益台灣精選強棒</option>
+      <option value="00403A">00403A 統一台股精選</option>
+    </select>
+    <input type="date" id="import-date">
+    <textarea id="import-json" placeholder='[{"code":"2330","name":"台積電",...}]' rows="8"></textarea>
+    <div class="modal-actions">
+      <button id="btn-import-confirm" class="btn-primary">匯入</button>
+      <button id="btn-import-cancel" class="btn-secondary">取消</button>
+    </div>
+    <p id="import-result" class="muted"></p>
+  </div>
+</div>
+
+<!-- ── Settings Modal ────────────────────────────────────────────── -->
+<div id="modal-settings" class="modal hidden">
+  <div class="modal-box">
+    <h2>⚙ Google Sheets 同步設定</h2>
+    <p class="muted" style="margin-top:6px">
+      每日自動抓取完成後會同步到你的 Google Sheets。<br>
+      請先依照下方說明建立 Google Apps Script。
+    </p>
+    <details style="margin-top:10px">
+      <summary style="font-size:12px;color:var(--accent);cursor:pointer">查看設定步驟 ▸</summary>
+      <ol style="font-size:11px;color:var(--muted);line-height:1.8;margin:8px 0 0 16px">
+        <li>開啟 <strong style="color:var(--text)">Google Sheets</strong> 新建一個試算表</li>
+        <li>點選選單 <strong style="color:var(--text)">擴充功能 → Apps Script</strong></li>
+        <li>將預設程式碼全部刪除，貼上下方提供的程式碼</li>
+        <li>點 <strong style="color:var(--text)">部署 → 新增部署作業</strong>，類型選「網頁應用程式」</li>
+        <li>執行身分：<strong style="color:var(--text)">我</strong>，存取權：<strong style="color:var(--text)">所有人</strong>，按部署</li>
+        <li>複製產生的 <strong style="color:var(--text)">網頁應用程式 URL</strong>，貼到下方欄位</li>
+      </ol>
+    </details>
+    <label style="display:block;margin-top:12px;font-size:12px;color:var(--muted)">Apps Script 網頁應用程式 URL</label>
+    <input type="url" id="settings-sheets-url" placeholder="https://script.google.com/macros/s/.../exec">
+    <div class="modal-actions">
+      <button id="btn-settings-save" class="btn-primary">儲存</button>
+      <button id="btn-settings-test" class="btn-secondary">測試連線</button>
+      <button id="btn-settings-cancel" class="btn-secondary">取消</button>
+    </div>
+    <p id="settings-result" class="muted" style="margin-top:8px"></p>
+  </div>
+</div>
+
+<script src="../vendor/chart.min.js"></script>
+<script type="module" src="popup.js"></script>
+</body>
+</html>
