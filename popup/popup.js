@@ -192,6 +192,15 @@ function noDataCard(cfg) {
 }
 
 function summaryCard(cfg, date, added, removed, changed = []) {
+  // 有股數資料的情況下，區分實際調倉 vs 市價漂移
+  const hasShareData = changed.some(s => s.shares > 0);
+  const tradedCount = hasShareData
+    ? changed.filter(s => s.shareDelta !== 0 || s.shares === 0).length
+    : changed.length;
+  const driftCount = hasShareData
+    ? changed.filter(s => s.shareDelta === 0 && s.shares > 0).length
+    : 0;
+
   return `
   <div class="summary-card" style="--card-color:${cfg.color}">
     <div class="card-etf">${cfg.code} · ${cfg.issuer}</div>
@@ -206,9 +215,13 @@ function summaryCard(cfg, date, added, removed, changed = []) {
         <div class="card-stat-label">移除</div>
       </div>
       <div class="card-stat">
-        <div class="card-stat-val" style="color:var(--yellow)">${changed.length}</div>
+        <div class="card-stat-val" style="color:var(--yellow)">${tradedCount}</div>
         <div class="card-stat-label">調整</div>
       </div>
+      ${driftCount > 0 ? `<div class="card-stat">
+        <div class="card-stat-val" style="color:var(--muted)">${driftCount}</div>
+        <div class="card-stat-label">漂移</div>
+      </div>` : ''}
     </div>
     <div class="muted" style="margin-top:4px">${date}</div>
   </div>`;
@@ -227,8 +240,13 @@ function changeDetail(cfg, added, removed, changed = []) {
       <div class="stock-list">${removed.map(s => stockChip(s, 'removed')).join('')}</div>`;
   }
 
-  const increased = changed.filter(s => s.delta > 0);
-  const decreased = changed.filter(s => s.delta < 0);
+  // 有股數資料時區分：實際調倉 vs 市價漂移（股數未動但比重隨股價變化）
+  const hasShareData = changed.some(s => s.shares > 0);
+  const traded  = hasShareData ? changed.filter(s => s.shareDelta !== 0 || s.shares === 0) : changed;
+  const drifted = hasShareData ? changed.filter(s => s.shareDelta === 0 && s.shares > 0)   : [];
+
+  const increased = traded.filter(s => s.delta > 0);
+  const decreased = traded.filter(s => s.delta < 0);
   if (increased.length > 0) {
     html += `<div class="changes-header"><span class="badge badge-green">增加比重 ${increased.length}</span></div>
       <div class="stock-list">${increased.map(s => weightChip(s, 'increased')).join('')}</div>`;
@@ -236,6 +254,17 @@ function changeDetail(cfg, added, removed, changed = []) {
   if (decreased.length > 0) {
     html += `<div class="changes-header"><span class="badge badge-red">減少比重 ${decreased.length}</span></div>
       <div class="stock-list">${decreased.map(s => weightChip(s, 'decreased')).join('')}</div>`;
+  }
+
+  // 市價漂移：股數未動，比重因股價相對漲跌而自然偏移
+  if (drifted.length > 0) {
+    const dUp   = drifted.filter(s => s.delta > 0);
+    const dDown = drifted.filter(s => s.delta < 0);
+    html += `<div class="changes-header"><span class="badge" style="background:rgba(136,146,164,.12);color:var(--muted)">市價漂移 ${drifted.length}（股數未異動）</span></div>
+      <div class="stock-list">
+        ${dUp.map(s => weightChip(s, 'increased')).join('')}
+        ${dDown.map(s => weightChip(s, 'decreased')).join('')}
+      </div>`;
   }
 
   return html + '</div>';
