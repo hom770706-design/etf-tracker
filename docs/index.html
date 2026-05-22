@@ -399,8 +399,8 @@ function renderChanges() {
         else if (action === '減少比重') { badgeCls = 'badge-down'; label = '▼比重'; }
         const cfg = ETF_CFG[r['ETF']] || {};
         const isWeight = action === '增加比重' || action === '減少比重';
-        const dv = Number(r['比重變化']);
-        const ds = Number(r['Δ股數']);
+        const dv = Number(r['比重變化(%)']);
+        const ds = Number(r['股數變化']);
         const deltaHtml = isWeight && !isNaN(dv) && dv !== 0
           ? `<span class="change-delta" style="color:${dv>0?'var(--green)':'var(--red)'}">${dv>0?'+':''}${dv.toFixed(2)}%</span>`
           : '';
