@@ -33,6 +33,15 @@
 
       if (!isPortfolioTable) continue;
 
+      // 動態偵測欄位順序（pocket.tw 各 ETF 不同）
+      const headerEls = [...table.querySelectorAll('th, thead td')];
+      let pctIdx = 2, sharesIdx = 3; // 預設
+      headerEls.forEach((th, i) => {
+        const t = th.textContent.trim();
+        if (/(比重|權重)/i.test(t)) pctIdx = i;
+        if (/(持有數|持股數|股數)/i.test(t)) sharesIdx = i;
+      });
+
       for (const row of table.querySelectorAll('tbody tr, tr')) {
         const cells = [...row.querySelectorAll('td')];
         if (cells.length < 2) continue;
@@ -41,8 +50,8 @@
         stocks.push({
           code: rawCode,
           name: cells[1].textContent.trim(),
-          percentage: parsePct(cells[2]?.textContent || '0'),
-          shares: parseNum(cells[3]?.textContent || '0')
+          percentage: parsePct(cells[pctIdx]?.textContent || '0'),
+          shares: parseNum(cells[sharesIdx]?.textContent || '0')
         });
       }
 
