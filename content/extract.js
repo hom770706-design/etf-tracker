@@ -48,6 +48,9 @@
 
       if (!isPortfolioTable) continue;
 
+      // pocket.tw 欄位順序：代號|名稱|權重(%)|持有數（與一般格式相反）
+      const isPocketTW = url.includes('pocket.tw');
+
       const rows = table.querySelectorAll('tbody tr, tr');
       for (const row of rows) {
         const cells = [...row.querySelectorAll('td')];
@@ -56,12 +59,22 @@
         const rawCode = cells[0].textContent.trim().replace(/\s+/g, '');
         if (!/^\d{4,6}[A-Za-z]?$/.test(rawCode)) continue;
 
-        stocks.push({
-          code: rawCode,
-          name: cells[1].textContent.trim(),
-          shares: parseNum(cells[2]?.textContent || '0'),
-          percentage: parsePct(cells[4]?.textContent || cells[3]?.textContent || '0')
-        });
+        if (isPocketTW) {
+          // cells[2]=權重(%)  cells[3]=持有數
+          stocks.push({
+            code: rawCode,
+            name: cells[1].textContent.trim(),
+            percentage: parsePct(cells[2]?.textContent || '0'),
+            shares: parseNum(cells[3]?.textContent || '0')
+          });
+        } else {
+          stocks.push({
+            code: rawCode,
+            name: cells[1].textContent.trim(),
+            shares: parseNum(cells[2]?.textContent || '0'),
+            percentage: parsePct(cells[4]?.textContent || cells[3]?.textContent || '0')
+          });
+        }
       }
 
       if (stocks.length > 0) break;
