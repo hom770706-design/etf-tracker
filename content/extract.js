@@ -1,164 +1,57 @@
 /**
  * ETF Holdings Content Script
  *
- * 注入到各 ETF 官網頁面，等 React/Vue 渲染完畢後，
+ * 注入到 pocket.tw ETF 持股頁面，等 Nuxt 渲染完畢後，
  * 從 DOM 提取持股資料並回傳給 background service worker。
- *
- * 這個 script 在一般瀏覽器頁面執行，有完整的 DOM 存取權限。
  */
 
 (function () {
   // ── 判斷目前是哪一檔 ETF ──────────────────────────────────────────
   const url = location.href;
 
-  // 先嘗試從 URL 直接比對 ETF 代碼
-  const directMatch = url.match(/(00980A|00981A|00982A|00403A|00984A|00985A|00991A|00987A|00992A|00994A|00995A|00993A|00996A|00400A|00401A|00999A)/i);
+  const match = url.match(/(00980A|00981A|00982A|00403A|00984A|00985A|00991A|00987A|00992A|00994A|00995A|00993A|00996A|00400A|00401A|00999A)/i);
+  if (!match) return;
 
-  // URL 不含代碼的網站：用固定對應表
-  const URL_CODE_MAP = [
-    { re: /ezmoney\.com\.tw.*fundCode=49YTW/i, code: '00981A' },
-    { re: /ezmoney\.com\.tw.*fundCode=63YTW/i, code: '00403A' },
-    { re: /capitalfund\.com\.tw.*\/399\//i,    code: '00982A' },
-  ];
-
-  const etfCode = directMatch
-    ? directMatch[1].toUpperCase()
-    : URL_CODE_MAP.find(m => m.re.test(url))?.code;
-
-  if (!etfCode) return; // 不是我們追蹤的 ETF，跳過
-
+  const etfCode = match[1].toUpperCase();
   const today = new Date().toISOString().slice(0, 10);
   let extracted = false;
 
   // ── 主要提取邏輯 ──────────────────────────────────────────────────
+  // pocket.tw 欄位順序：代號 | 名稱 | 權重(%) | 持有數
   function extractStocks() {
     const stocks = [];
 
-    // ① 嘗試找持股 table（搜尋所有 table）
+    // ① 標準 <table>（pocket.tw 渲染完成後的結構）
     const tables = document.querySelectorAll('table');
     for (const table of tables) {
-      // 確認 header 有「代號」或「股票」相關欄位
       const headers = [...table.querySelectorAll('th, thead td')]
         .map(el => el.textContent.trim()).join('|');
 
       const isPortfolioTable =
         /(代號|代碼|股票代|Stock\s*Code|Symbol)/i.test(headers) ||
-        // 如果沒有 th，看第一行 td 是否像代號
         (/^\d{4}/.test(table.querySelector('tbody tr td')?.textContent?.trim() || ''));
 
       if (!isPortfolioTable) continue;
 
-      // pocket.tw 欄位順序：代號|名稱|權重(%)|持有數（與一般格式相反）
-      const isPocketTW = url.includes('pocket.tw');
-
-      const rows = table.querySelectorAll('tbody tr, tr');
-      for (const row of rows) {
+      for (const row of table.querySelectorAll('tbody tr, tr')) {
         const cells = [...row.querySelectorAll('td')];
         if (cells.length < 2) continue;
-
         const rawCode = cells[0].textContent.trim().replace(/\s+/g, '');
         if (!/^\d{4,6}[A-Za-z]?$/.test(rawCode)) continue;
-
-        if (isPocketTW) {
-          // cells[2]=權重(%)  cells[3]=持有數
-          stocks.push({
-            code: rawCode,
-            name: cells[1].textContent.trim(),
-            percentage: parsePct(cells[2]?.textContent || '0'),
-            shares: parseNum(cells[3]?.textContent || '0')
-          });
-        } else {
-          stocks.push({
-            code: rawCode,
-            name: cells[1].textContent.trim(),
-            shares: parseNum(cells[2]?.textContent || '0'),
-            percentage: parsePct(cells[4]?.textContent || cells[3]?.textContent || '0')
-          });
-        }
+        stocks.push({
+          code: rawCode,
+          name: cells[1].textContent.trim(),
+          percentage: parsePct(cells[2]?.textContent || '0'),
+          shares: parseNum(cells[3]?.textContent || '0')
+        });
       }
 
       if (stocks.length > 0) break;
     }
 
-    // ② ezmoney.com.tw：#assetBody 內的最後一個 table（股票持股）
-    // 欄位順序：股票代號 | 股票名稱 | 股數 | 持股權重
+    // ② 備援：搜尋頁面中嵌入的 JSON（SSR / __NEXT_DATA__）
     if (stocks.length === 0) {
-      const assetBody = document.querySelector('#assetBody');
-      if (assetBody) {
-        const tables = assetBody.querySelectorAll('table');
-        const stockTable = tables[tables.length - 1];
-        if (stockTable) {
-          for (const row of stockTable.querySelectorAll('tbody tr')) {
-            const cells = [...row.querySelectorAll('td')];
-            if (cells.length < 2) continue;
-            const rawCode = cells[0].textContent.trim().replace(/\s+/g, '');
-            if (!/^\d{4,6}[A-Za-z]?$/.test(rawCode)) continue;
-            stocks.push({
-              code: rawCode,
-              name: cells[1].textContent.trim(),
-              shares: parseNum(cells[2]?.textContent || '0'),
-              percentage: parsePct(cells[3]?.textContent || '0')
-            });
-          }
-        }
-      }
-    }
-
-    // ③ capitalfund.com.tw：Angular div-based table（非 <table> 元素）
-    if (stocks.length === 0) {
-      const tbody = document.querySelector('.pct-stock-table-tbody');
-      if (tbody) {
-        for (const row of tbody.children) {
-          const cells = [...row.children]
-            .map(el => el.textContent.trim())
-            .filter(Boolean);
-          if (cells.length < 2) continue;
-
-          // 第一格應為股票代號（4~6位數字）
-          const rawCode = cells[0].replace(/\s+/g, '');
-          if (!/^\d{4,6}[A-Za-z]?$/.test(rawCode)) continue;
-
-          // 找出持股權重（含 % 的格）和股數（最後一個純數字格）
-          const pctText = cells.find(c => /%/.test(c)) || '0';
-          const sharesText = [...cells].reverse()
-            .find(c => /^[\d,.\s]+$/.test(c) && !/%/.test(c)) || '0';
-
-          stocks.push({
-            code: rawCode,
-            name: cells[1] || '',
-            percentage: parsePct(pctText),
-            shares: parseNum(sharesText)
-          });
-        }
-      }
-    }
-
-    // ③ pocket.tw：Nuxt SPA，持股列表為 div 模擬的表格
-    if (stocks.length === 0 && url.includes('pocket.tw')) {
-      // 持股明細通常在 class 含 "holding" 或 "stock" 的容器內
-      const rows = document.querySelectorAll(
-        '[class*="holding"] tr, [class*="stock"] tr, ' +
-        '[class*="fund"] tr, .table-row, [class*="row"]'
-      );
-      for (const row of rows) {
-        const cells = [...row.querySelectorAll('td, [class*="cell"], [class*="col"]')]
-          .map(el => el.textContent.trim()).filter(Boolean);
-        if (cells.length < 2) continue;
-        const rawCode = cells[0].replace(/\s+/g, '');
-        if (!/^\d{4,6}[A-Za-z]?$/.test(rawCode)) continue;
-        stocks.push({
-          code: rawCode,
-          name: cells[1] || '',
-          shares: parseNum(cells.find(c => /^[\d,]+$/.test(c.replace(/,/g, ''))) || '0'),
-          percentage: parsePct(cells.find(c => /%/.test(c)) || '0')
-        });
-      }
-    }
-
-    // ④ 備援：搜尋頁面中嵌入的 JSON（某些 SSR 頁面）
-    if (stocks.length === 0) {
-      const jsonStocks = tryExtractFromScripts();
-      stocks.push(...jsonStocks);
+      stocks.push(...tryExtractFromScripts());
     }
 
     return stocks;
@@ -184,12 +77,10 @@
       }
     }
 
-    // Next.js __NEXT_DATA__
     const nextScript = document.querySelector('#__NEXT_DATA__');
     if (nextScript) {
       try {
-        const obj = JSON.parse(nextScript.textContent);
-        return findStocksInObject(obj);
+        return findStocksInObject(JSON.parse(nextScript.textContent));
       } catch (_) {}
     }
 
@@ -228,10 +119,7 @@
   function sendToBackground(stocks) {
     if (extracted) return;
     extracted = true;
-
-    // Extension 重新載入後 chrome.runtime 會變成 undefined，需要防呆
     if (!chrome?.runtime?.sendMessage) return;
-
     chrome.runtime.sendMessage({
       action: 'contentScriptHoldings',
       etfCode,
@@ -244,7 +132,7 @@
     });
   }
 
-  // ── 等待 React 渲染後再提取 ───────────────────────────────────────
+  // ── 等待 Nuxt 渲染後再提取 ────────────────────────────────────────
   function tryAndWatch() {
     const stocks = extractStocks();
     if (stocks.length > 0) {
@@ -252,8 +140,6 @@
       return;
     }
 
-    // DOM 尚未渲染，用 MutationObserver + debounce 等待
-    // 不用 checkCount 限制，因為 React/Angular SPA 初始化就會觸發大量 mutation
     let debounceTimer = null;
     const observer = new MutationObserver(() => {
       clearTimeout(debounceTimer);
@@ -269,7 +155,6 @@
 
     observer.observe(document.body, { childList: true, subtree: true });
 
-    // 另外每 5 秒強制掃描一次（避免 Angular 持續 mutation 導致 debounce 永遠不觸發）
     const periodicCheck = setInterval(() => {
       const stocks = extractStocks();
       if (stocks.length > 0) {
@@ -280,7 +165,6 @@
       }
     }, 5000);
 
-    // 強制超時（45 秒）
     setTimeout(() => {
       clearTimeout(debounceTimer);
       clearInterval(periodicCheck);

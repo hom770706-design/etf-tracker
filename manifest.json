@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "台灣主動ETF成分股追蹤器",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "每日追蹤 16 檔主動式 ETF 成分股變化與趨勢分析",
   "permissions": [
     "storage",
@@ -15,10 +15,6 @@
     "https://wwwc.twse.com.tw/*",
     "https://isin.twse.com.tw/*",
     "https://openapi.twse.com.tw/*",
-    "https://www.nomurafunds.com.tw/*",
-    "https://money.nomurafunds.com.tw/*",
-    "https://www.ezmoney.com.tw/*",
-    "https://www.capitalfund.com.tw/*",
     "https://www.pocket.tw/*",
     "https://script.google.com/*",
     "https://script.googleusercontent.com/*"
@@ -30,12 +26,6 @@
   "content_scripts": [
     {
       "matches": [
-        "https://www.twse.com.tw/zh/ETFortune/etfInfo/*",
-        "https://wwwc.twse.com.tw/zh/ETFortune-institute/etfInfo/*",
-        "https://www.nomurafunds.com.tw/ETFWEB/*",
-        "https://money.nomurafunds.com.tw/etf/*",
-        "https://www.ezmoney.com.tw/ETF/*",
-        "https://www.capitalfund.com.tw/etf/*",
         "https://www.pocket.tw/etf/tw/*/fundholding"
       ],
       "js": ["content/extract.js"],
