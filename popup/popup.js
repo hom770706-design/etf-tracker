@@ -279,13 +279,16 @@ function weightChip(stock, type) {
   const ind      = lookupIndustry(stock.code, industryMap);
   const sign     = stock.delta > 0 ? '+' : '';
   const cls      = type === 'increased' ? 'delta-up' : 'delta-down';
-  let shareStr = '';
+  let primary, secondary;
   if (stock.shareDelta != null && stock.shareDelta !== 0) {
-    shareStr = ` / ${stock.shareDelta > 0 ? '+' : ''}${stock.shareDelta.toLocaleString()}`;
-  } else if (stock.shares > 0 && stock.shareDelta === 0) {
-    shareStr = ' / 持股不變';
+    const sSign = stock.shareDelta > 0 ? '+' : '';
+    primary   = `${sSign}${stock.shareDelta.toLocaleString()}`;
+    secondary = `(${sign}${stock.delta.toFixed(2)}%)`;
+  } else {
+    primary   = `${sign}${stock.delta.toFixed(2)}%`;
+    secondary = stock.shares > 0 ? '持股不變' : '';
   }
-  return `<span class="stock-chip ${type}"><span class="code">${stock.code}</span>${stock.name}<span class="${cls}"> ${sign}${stock.delta.toFixed(2)}%${shareStr}</span><span class="ind"> ${ind}</span></span>`;
+  return `<span class="stock-chip ${type}"><span class="code">${stock.code}</span>${stock.name}<span class="${cls}"> ${primary}</span><span style="color:var(--muted);font-size:10px"> ${secondary}</span><span class="ind"> ${ind}</span></span>`;
 }
 
 // ── HOLDINGS TAB ─────────────────────────────────────────────────
@@ -513,10 +516,11 @@ async function renderOverlap() {
 
 // ── TREND TAB ─────────────────────────────────────────────────────────
 async function renderTrend() {
-  const codes = activeEtf === 'all' ? ETF_CODES : [activeEtf];
+  const codes  = activeEtf === 'all' ? ETF_CODES : [activeEtf];
+  const isAll  = activeEtf === 'all';
   const allDates = new Set();
   const dataByCode   = {};
-  const detailByCode = {}; // for tooltips
+  const detailByCode = {};
 
   for (const code of codes) {
     const history = await buildChangeHistory(code);
@@ -524,12 +528,13 @@ async function renderTrend() {
     detailByCode[code] = {};
     for (const { date, added, removed, changed = [] } of history) {
       allDates.add(date);
-      dataByCode[code][date] = {
-        added:   added.reduce((s, x) => s + (x.percentage || 0), 0),
-        removed: removed.reduce((s, x) => s + (x.percentage || 0), 0),
-        changed: changed.reduce((s, x) => s + Math.abs(x.delta || 0), 0)
-      };
-      detailByCode[code][date] = { added, removed, changed };
+      // 區分實際調倉 vs 市價漂移
+      const hasShareData = changed.some(s => s.shares > 0);
+      const traded = hasShareData
+        ? changed.filter(s => s.shareDelta !== 0 || s.shares === 0)
+        : changed;
+      dataByCode[code][date]   = { added: added.length, removed: removed.length, traded: traded.length };
+      detailByCode[code][date] = { added, removed, traded };
     }
   }
 
@@ -544,31 +549,50 @@ async function renderTrend() {
   }
   trendCanvas.style.display = '';
 
-  const datasets = [];
-  for (const code of codes) {
-    const cfg = ETF_CONFIG[code];
-    datasets.push({
-      label: `${code} 新增`,
-      data: labels.map(d => dataByCode[code][d]?.added ?? null),
-      borderColor: cfg.color, backgroundColor: cfg.bgColor,
-      borderWidth: 2, pointRadius: 3, tension: 0.3, fill: false
+  let datasets, chartType;
+
+  if (isAll) {
+    // 全部模式：每檔 ETF 一條折線，Y = 總交易檔數（新增+移除+調倉）
+    chartType = 'line';
+    datasets = codes.map(code => {
+      const cfg = ETF_CONFIG[code];
+      return {
+        label: code,
+        data: labels.map(d => {
+          const v = dataByCode[code][d];
+          return v != null ? v.added + v.removed + v.traded : null;
+        }),
+        borderColor: cfg.color, backgroundColor: cfg.bgColor,
+        borderWidth: 2, pointRadius: 4, tension: 0.3, fill: false
+      };
     });
-    datasets.push({
-      label: `${code} 移除`,
-      data: labels.map(d => dataByCode[code][d]?.removed ?? null),
-      borderColor: cfg.color, backgroundColor: cfg.bgColor,
-      borderWidth: 2, borderDash: [4, 4], pointRadius: 3, tension: 0.3, fill: false
-    });
-    datasets.push({
-      label: `${code} 比重調整`,
-      data: labels.map(d => dataByCode[code][d]?.changed ?? null),
-      borderColor: cfg.color + '88', backgroundColor: cfg.bgColor,
-      borderWidth: 1, borderDash: [2, 2], pointRadius: 2, tension: 0.3, fill: false
-    });
+  } else {
+    // 單一 ETF：長條圖，新增/移除/調倉分開
+    chartType = 'bar';
+    datasets = [
+      {
+        label: '新增',
+        data: labels.map(d => dataByCode[codes[0]][d]?.added ?? null),
+        backgroundColor: 'rgba(46,204,113,0.75)', borderColor: '#2ecc71',
+        borderWidth: 1, borderRadius: 3
+      },
+      {
+        label: '移除',
+        data: labels.map(d => dataByCode[codes[0]][d]?.removed ?? null),
+        backgroundColor: 'rgba(231,76,60,0.75)', borderColor: '#e74c3c',
+        borderWidth: 1, borderRadius: 3
+      },
+      {
+        label: '調倉',
+        data: labels.map(d => dataByCode[codes[0]][d]?.traded ?? null),
+        backgroundColor: 'rgba(243,156,18,0.65)', borderColor: '#f39c12',
+        borderWidth: 1, borderRadius: 3
+      }
+    ];
   }
 
   charts.trend = new Chart(trendCanvas, {
-    type: 'line',
+    type: chartType,
     data: { labels, datasets },
     options: {
       responsive: true,
@@ -578,37 +602,46 @@ async function renderTrend() {
         tooltip: {
           backgroundColor: '#1a1d27', titleColor: '#e2e8f0', bodyColor: '#8892a4',
           callbacks: {
-            label: ctx => `${ctx.dataset.label}: ${ctx.raw != null ? ctx.raw.toFixed(2) + '%' : '—'}`,
+            label: ctx => `${ctx.dataset.label}: ${ctx.raw != null ? ctx.raw + ' 檔' : '—'}`,
             afterLabel: ctx => {
-              const codeMatch = ctx.dataset.label.match(/^(\S+)/);
-              if (!codeMatch) return [];
-              const code = codeMatch[1];
               const date = labels[ctx.dataIndex];
-              const detail = detailByCode[code]?.[date];
-              if (!detail) return [];
-              if (ctx.dataset.label.includes('新增'))
-                return detail.added.slice(0, 5).map(s => `  ＋${s.code} ${s.name} ${(s.percentage||0).toFixed(1)}%`);
-              if (ctx.dataset.label.includes('移除'))
-                return detail.removed.slice(0, 5).map(s => `  －${s.code} ${s.name} ${(s.percentage||0).toFixed(1)}%`);
-              if (ctx.dataset.label.includes('比重'))
-                return detail.changed.slice(0, 5).map(s => {
-                  const sign = s.delta > 0 ? '▲' : '▼';
-                  const shareStr = s.shareDelta != null && s.shareDelta !== 0
-                    ? ` (${s.shareDelta > 0 ? '+' : ''}${s.shareDelta.toLocaleString()})`
-                    : '';
-                  return `  ${sign}${s.code} ${s.name} ${s.delta > 0 ? '+' : ''}${s.delta.toFixed(2)}%${shareStr}`;
+              if (isAll) {
+                const code   = ctx.dataset.label;
+                const detail = detailByCode[code]?.[date];
+                if (!detail) return [];
+                const lines = [];
+                detail.added.slice(0, 3).forEach(s => lines.push(`  ＋${s.code} ${s.name}`));
+                detail.removed.slice(0, 3).forEach(s => lines.push(`  －${s.code} ${s.name}`));
+                detail.traded.slice(0, 3).forEach(s => {
+                  const sSign = s.shareDelta > 0 ? '+' : '';
+                  const shareStr = s.shareDelta ? ` ${sSign}${s.shareDelta.toLocaleString()}` : '';
+                  lines.push(`  ↕${s.code} ${s.name}${shareStr}`);
                 });
-              return [];
+                return lines;
+              } else {
+                const code   = codes[0];
+                const detail = detailByCode[code]?.[date];
+                if (!detail) return [];
+                const type = ctx.dataset.label;
+                const arr  = type === '新增' ? detail.added : type === '移除' ? detail.removed : detail.traded;
+                return arr.slice(0, 6).map(s => {
+                  if (type === '調倉' && s.shareDelta) {
+                    const sSign = s.shareDelta > 0 ? '+' : '';
+                    return `  ${s.code} ${s.name} ${sSign}${s.shareDelta.toLocaleString()}`;
+                  }
+                  return `  ${s.code} ${s.name} ${(s.percentage||0).toFixed(1)}%`;
+                });
+              }
             }
           }
         }
       },
       scales: {
-        x: { ticks: { color: '#8892a4', font: { size: 10 }, maxTicksLimit: 10 }, grid: { color: '#2e3148' } },
+        x: { ticks: { color: '#8892a4', font: { size: 10 }, maxTicksLimit: 12 }, grid: { color: '#2e3148' } },
         y: {
-          ticks: { color: '#8892a4', font: { size: 11 }, callback: v => v.toFixed(1) + '%' },
+          ticks: { color: '#8892a4', font: { size: 11 }, stepSize: 1, callback: v => v + ' 檔' },
           grid: { color: '#2e3148' }, beginAtZero: true,
-          title: { display: true, text: '持股比重 (%)', color: '#8892a4', font: { size: 10 } }
+          title: { display: true, text: '股票檔數', color: '#8892a4', font: { size: 10 } }
         }
       }
     }
