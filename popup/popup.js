@@ -250,9 +250,12 @@ function weightChip(stock, type) {
   const ind      = lookupIndustry(stock.code, industryMap);
   const sign     = stock.delta > 0 ? '+' : '';
   const cls      = type === 'increased' ? 'delta-up' : 'delta-down';
-  const shareStr = stock.shareDelta != null && stock.shareDelta !== 0
-    ? ` / ${stock.shareDelta > 0 ? '+' : ''}${stock.shareDelta.toLocaleString()}`
-    : '';
+  let shareStr = '';
+  if (stock.shareDelta != null && stock.shareDelta !== 0) {
+    shareStr = ` / ${stock.shareDelta > 0 ? '+' : ''}${stock.shareDelta.toLocaleString()}`;
+  } else if (stock.shares > 0 && stock.shareDelta === 0) {
+    shareStr = ' / 持股不變';
+  }
   return `<span class="stock-chip ${type}"><span class="code">${stock.code}</span>${stock.name}<span class="${cls}"> ${sign}${stock.delta.toFixed(2)}%${shareStr}</span><span class="ind"> ${ind}</span></span>`;
 }
 
@@ -290,7 +293,7 @@ async function renderHoldings() {
       const prevHoldings = await getHoldings(code, dates[dates.length - 2]);
       const { added, changed } = diffHoldings(prevHoldings, holdings);
       for (const s of added)   changeMap[s.code] = { isNew: true };
-      for (const s of changed) changeMap[s.code] = { delta: s.delta, shareDelta: s.shareDelta };
+      for (const s of changed) changeMap[s.code] = { delta: s.delta, shareDelta: s.shareDelta, shares: s.shares };
     }
 
     const sectionId = `holdings-${code}`;
@@ -340,7 +343,9 @@ async function renderHoldings() {
           const sign  = chg.delta > 0 ? '+' : '';
           const cls   = chg.delta > 0 ? 'delta-up' : 'delta-down';
           const sSign = chg.shareDelta > 0 ? '+' : '';
-          const sStr  = chg.shareDelta !== 0 ? `<br><span style="font-size:10px">${sSign}${chg.shareDelta.toLocaleString()}</span>` : '';
+          const sStr = chg.shareDelta !== 0
+            ? `<br><span style="font-size:10px">${sSign}${chg.shareDelta.toLocaleString()}</span>`
+            : (chg.shares > 0 ? `<br><span style="font-size:10px;color:var(--muted)">持股不變</span>` : '');
           changeCell  = `<td class="${cls}" style="text-align:right">${sign}${chg.delta.toFixed(2)}%${sStr}</td>`;
         }
         return `<tr${hide ? ' class="hidden-row"' : ''}>
