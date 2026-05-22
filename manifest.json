@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "台灣主動ETF成分股追蹤器",
-  "version": "1.1.0",
-  "description": "每日追蹤 00980A、00981A、00982A、00403A 成分股變化與趨勢分析",
+  "version": "1.2.0",
+  "description": "每日追蹤 16 檔主動式 ETF 成分股變化與趨勢分析",
   "permissions": [
     "storage",
     "unlimitedStorage",
@@ -19,6 +19,7 @@
     "https://money.nomurafunds.com.tw/*",
     "https://www.ezmoney.com.tw/*",
     "https://www.capitalfund.com.tw/*",
+    "https://www.pocket.tw/*",
     "https://script.google.com/*",
     "https://script.googleusercontent.com/*"
   ],
@@ -34,7 +35,8 @@
         "https://www.nomurafunds.com.tw/ETFWEB/*",
         "https://money.nomurafunds.com.tw/etf/*",
         "https://www.ezmoney.com.tw/ETF/*",
-        "https://www.capitalfund.com.tw/etf/*"
+        "https://www.capitalfund.com.tw/etf/*",
+        "https://www.pocket.tw/etf/tw/*/fundholding"
       ],
       "js": ["content/extract.js"],
       "run_at": "document_idle"

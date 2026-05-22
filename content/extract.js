@@ -12,7 +12,7 @@
   const url = location.href;
 
   // 先嘗試從 URL 直接比對 ETF 代碼
-  const directMatch = url.match(/(00980A|00981A|00982A|00403A)/i);
+  const directMatch = url.match(/(00980A|00981A|00982A|00403A|00984A|00985A|00991A|00987A|00992A|00994A|00995A|00993A|00996A|00400A|00401A|00999A)/i);
 
   // URL 不含代碼的網站：用固定對應表
   const URL_CODE_MAP = [
@@ -120,7 +120,29 @@
       }
     }
 
-    // ③ 備援：搜尋頁面中嵌入的 JSON（某些 SSR 頁面）
+    // ③ pocket.tw：Nuxt SPA，持股列表為 div 模擬的表格
+    if (stocks.length === 0 && url.includes('pocket.tw')) {
+      // 持股明細通常在 class 含 "holding" 或 "stock" 的容器內
+      const rows = document.querySelectorAll(
+        '[class*="holding"] tr, [class*="stock"] tr, ' +
+        '[class*="fund"] tr, .table-row, [class*="row"]'
+      );
+      for (const row of rows) {
+        const cells = [...row.querySelectorAll('td, [class*="cell"], [class*="col"]')]
+          .map(el => el.textContent.trim()).filter(Boolean);
+        if (cells.length < 2) continue;
+        const rawCode = cells[0].replace(/\s+/g, '');
+        if (!/^\d{4,6}[A-Za-z]?$/.test(rawCode)) continue;
+        stocks.push({
+          code: rawCode,
+          name: cells[1] || '',
+          shares: parseNum(cells.find(c => /^[\d,]+$/.test(c.replace(/,/g, ''))) || '0'),
+          percentage: parsePct(cells.find(c => /%/.test(c)) || '0')
+        });
+      }
+    }
+
+    // ④ 備援：搜尋頁面中嵌入的 JSON（某些 SSR 頁面）
     if (stocks.length === 0) {
       const jsonStocks = tryExtractFromScripts();
       stocks.push(...jsonStocks);

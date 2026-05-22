@@ -109,6 +109,18 @@
   <button class="etf-btn" data-etf="00981A">00981A</button>
   <button class="etf-btn" data-etf="00982A">00982A</button>
   <button class="etf-btn" data-etf="00403A">00403A</button>
+  <button class="etf-btn" data-etf="00984A">00984A</button>
+  <button class="etf-btn" data-etf="00985A">00985A</button>
+  <button class="etf-btn" data-etf="00987A">00987A</button>
+  <button class="etf-btn" data-etf="00991A">00991A</button>
+  <button class="etf-btn" data-etf="00992A">00992A</button>
+  <button class="etf-btn" data-etf="00993A">00993A</button>
+  <button class="etf-btn" data-etf="00994A">00994A</button>
+  <button class="etf-btn" data-etf="00995A">00995A</button>
+  <button class="etf-btn" data-etf="00996A">00996A</button>
+  <button class="etf-btn" data-etf="00999A">00999A</button>
+  <button class="etf-btn" data-etf="00400A">00400A</button>
+  <button class="etf-btn" data-etf="00401A">00401A</button>
 </div>
 
 <nav class="tabs">
@@ -137,12 +149,28 @@
 </div>
 
 <script>
-const ETF_CODES = ['00980A','00981A','00982A','00403A'];
+const ETF_CODES = [
+  '00980A','00981A','00982A','00403A',
+  '00984A','00985A','00991A','00987A','00992A','00994A',
+  '00995A','00993A','00996A','00400A','00401A','00999A'
+];
 const ETF_CFG = {
-  '00980A': { name:'野村臺灣智慧優選', color:'#4f6ef7' },
-  '00981A': { name:'統一台股增長',     color:'#2ecc71' },
-  '00982A': { name:'群益台灣精選強棒', color:'#f39c12' },
-  '00403A': { name:'統一台股精選',     color:'#e74c3c' },
+  '00980A': { name:'野村臺灣智慧優選', color:'#E74C3C' },
+  '00981A': { name:'統一台股增長',     color:'#3498DB' },
+  '00982A': { name:'群益台灣精選強棒', color:'#2ECC71' },
+  '00403A': { name:'統一台股精選',     color:'#9B59B6' },
+  '00984A': { name:'安聯台灣高息',     color:'#FF8A65' },
+  '00985A': { name:'野村臺灣增強50',   color:'#BA68C8' },
+  '00991A': { name:'復華未來50',       color:'#4DD0E1' },
+  '00987A': { name:'台新台灣優勢',     color:'#FFB74D' },
+  '00992A': { name:'群益科技創新',     color:'#81C784' },
+  '00994A': { name:'第一金台股趨勢',   color:'#F06292' },
+  '00995A': { name:'中信台灣卓越',     color:'#64B5F6' },
+  '00993A': { name:'安聯台灣主動',     color:'#FF7043' },
+  '00996A': { name:'兆豐台灣豐收',     color:'#4DB6AC' },
+  '00400A': { name:'國泰台股動能',     color:'#E57373' },
+  '00401A': { name:'摩根鑫收益',       color:'#9575CD' },
+  '00999A': { name:'野村策略高息',     color:'#D4E157' },
 };
 
 let sheetId   = localStorage.getItem('etf_sheet_id') || '';
