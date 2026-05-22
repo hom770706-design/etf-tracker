@@ -39,6 +39,16 @@ function setupEventListeners() {
     btn.addEventListener('click', () => switchEtf(btn.dataset.etf));
   });
 
+  // Expand button — open popup in a new tab for full-width view
+  document.getElementById('btn-expand').addEventListener('click', () => {
+    chrome.tabs.create({ url: chrome.runtime.getURL('popup/popup.html?fullpage=1') });
+  });
+
+  // Mark fullpage mode when opened in tab
+  if (new URLSearchParams(location.search).get('fullpage')) {
+    document.body.classList.add('fullpage');
+  }
+
   // Refresh button
   document.getElementById('btn-refresh').addEventListener('click', () => {
     const btn = document.getElementById('btn-refresh');
@@ -486,7 +496,7 @@ async function renderOverlap() {
         <div class="changes-header">
           <span class="badge" style="background:rgba(79,110,247,0.15);color:var(--accent)">${label} ETF 同持・共 ${stocks.length} 支</span>
         </div>
-        <div class="holdings-section" style="--card-color:var(--accent)">
+        <div class="holdings-section scrollable-x" style="--card-color:var(--accent)">
           <table class="holdings-table">
             <thead><tr>
               <th>代號</th><th>名稱</th><th>產業</th>

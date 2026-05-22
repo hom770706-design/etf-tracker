@@ -18,14 +18,20 @@
 }
 
 body {
-  width: 620px;
+  width: 800px;
   min-height: 480px;
   background: var(--bg);
   color: var(--text);
   font-family: 'Segoe UI', 'PingFang TC', 'Microsoft JhengHei', system-ui, sans-serif;
   font-size: 13px;
   line-height: 1.5;
-  overflow-x: hidden;
+}
+
+/* Full-page mode (opened in tab) */
+body.fullpage {
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
 }
 
 /* ── Header ────────────────────────────────────────────────────── */
@@ -449,6 +455,15 @@ footer {
   border-radius: var(--radius);
   margin-bottom: 10px;
   overflow: hidden;
+}
+
+/* Overlap table: allow horizontal scroll when many ETF columns */
+.holdings-section.scrollable-x {
+  overflow-x: auto;
+}
+.holdings-section.scrollable-x .holdings-table {
+  width: max-content;
+  min-width: 100%;
 }
 
 .holdings-header {
