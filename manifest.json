@@ -17,7 +17,8 @@
     "https://openapi.twse.com.tw/*",
     "https://www.pocket.tw/*",
     "https://script.google.com/*",
-    "https://script.googleusercontent.com/*"
+    "https://script.googleusercontent.com/*",
+    "https://api.groq.com/*"
   ],
   "background": {
     "service_worker": "background/service-worker.js",

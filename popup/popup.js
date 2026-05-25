@@ -142,6 +142,7 @@ async function renderCurrentTab() {
     case 'industry': return renderIndustry();
     case 'stocks':   return renderStocks();
     case 'overlap':  return renderOverlap();
+    case 'ai':       return renderAI();
   }
 }
 
@@ -902,8 +903,9 @@ async function handleImport() {
 
 // ── Settings Modal ────────────────────────────────────────────────────
 async function openSettingsModal() {
-  const { sheetsWebAppUrl } = await getSettings();
+  const { sheetsWebAppUrl, groqApiKey } = await getSettings();
   document.getElementById('settings-sheets-url').value = sheetsWebAppUrl || '';
+  document.getElementById('settings-groq-key').value = groqApiKey || '';
   document.getElementById('settings-result').textContent = '';
   document.getElementById('modal-settings').classList.remove('hidden');
 }
@@ -913,9 +915,10 @@ function closeSettingsModal() {
 }
 
 async function handleSettingsSave() {
-  const url = document.getElementById('settings-sheets-url').value.trim();
-  await saveSettings({ sheetsWebAppUrl: url });
-  document.getElementById('settings-result').textContent = url ? '✓ 已儲存' : '已清除 URL';
+  const url    = document.getElementById('settings-sheets-url').value.trim();
+  const groqKey = document.getElementById('settings-groq-key').value.trim();
+  await saveSettings({ sheetsWebAppUrl: url, groqApiKey: groqKey });
+  document.getElementById('settings-result').textContent = '✓ 已儲存';
 }
 
 async function handleSettingsTest() {
@@ -1006,4 +1009,173 @@ function daysBetween(dateA, dateB) {
   const a = new Date(dateA);
   const b = new Date(dateB);
   return Math.max(0, Math.round((b - a) / 86400000));
+}
+
+// ── AI Chat ───────────────────────────────────────────────────────────
+let chatHistory = [];   // { role, content }[]
+let chatContextReady = false;
+
+async function renderAI() {
+  // 只在第一次進入 AI tab 時初始化（保留對話紀錄）
+  const msgsEl = document.getElementById('chat-messages');
+  if (chatContextReady) return;
+
+  msgsEl.innerHTML = '';
+  chatHistory = [];
+  chatContextReady = true;
+
+  // 建立系統 prompt（今日持股異動摘要）
+  const systemPrompt = await buildChatContext();
+  chatHistory.push({ role: 'system', content: systemPrompt });
+
+  appendChatMsg('muted-msg', 'AI 已載入今日 ETF 異動資料，可以開始提問');
+
+  // 送出按鈕
+  const sendBtn = document.getElementById('chat-send');
+  const inputEl = document.getElementById('chat-input');
+  const clearLink = document.getElementById('chat-clear');
+
+  // 移除舊的 listener（避免重複綁定）
+  const newSend = sendBtn.cloneNode(true);
+  sendBtn.parentNode.replaceChild(newSend, sendBtn);
+  const newInput = inputEl.cloneNode(true);
+  inputEl.parentNode.replaceChild(newInput, inputEl);
+
+  document.getElementById('chat-send').addEventListener('click', handleChatSend);
+  document.getElementById('chat-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleChatSend(); }
+  });
+  clearLink.onclick = e => {
+    e.preventDefault();
+    chatContextReady = false;
+    renderAI();
+  };
+}
+
+async function handleChatSend() {
+  const inputEl = document.getElementById('chat-input');
+  const text = inputEl.value.trim();
+  if (!text) return;
+
+  const { groqApiKey } = await getSettings();
+  if (!groqApiKey) {
+    appendChatMsg('muted-msg', '請先在設定（⚙）中填入 Groq API Key');
+    return;
+  }
+
+  inputEl.value = '';
+  document.getElementById('chat-send').disabled = true;
+
+  appendChatMsg('user', text);
+  chatHistory.push({ role: 'user', content: text });
+
+  const aiEl = appendChatMsg('ai streaming', '');
+  try {
+    const reply = await streamGroq(groqApiKey, chatHistory, chunk => {
+      aiEl.textContent += chunk;
+      document.getElementById('chat-messages').scrollTop = 9999;
+    });
+    aiEl.classList.remove('streaming');
+    chatHistory.push({ role: 'assistant', content: reply });
+  } catch (err) {
+    aiEl.classList.remove('streaming');
+    aiEl.textContent = '錯誤：' + err.message;
+  }
+
+  document.getElementById('chat-send').disabled = false;
+  document.getElementById('chat-input').focus();
+}
+
+async function streamGroq(apiKey, messages, onChunk) {
+  const resp = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: 'llama-3.3-70b-versatile',
+      messages,
+      stream: true,
+      max_tokens: 1536,
+      temperature: 0.5
+    })
+  });
+
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({}));
+    throw new Error(err.error?.message || `HTTP ${resp.status}`);
+  }
+
+  const reader = resp.body.getReader();
+  const decoder = new TextDecoder();
+  let fullText = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    const lines = decoder.decode(value, { stream: true }).split('\n');
+    for (const line of lines) {
+      if (!line.startsWith('data: ')) continue;
+      const data = line.slice(6).trim();
+      if (data === '[DONE]') break;
+      try {
+        const delta = JSON.parse(data).choices[0]?.delta?.content || '';
+        if (delta) { fullText += delta; onChunk(delta); }
+      } catch (_) {}
+    }
+  }
+  return fullText;
+}
+
+function appendChatMsg(cls, text) {
+  const div = document.createElement('div');
+  div.className = 'chat-msg ' + cls;
+  div.textContent = text;
+  const msgsEl = document.getElementById('chat-messages');
+  msgsEl.appendChild(div);
+  msgsEl.scrollTop = msgsEl.scrollHeight;
+  return div;
+}
+
+async function buildChatContext() {
+  const today = new Date().toISOString().slice(0, 10);
+  const lines = [
+    `你是一位台灣主動式ETF投資分析助理。請用繁體中文回答，語氣專業但易懂。`,
+    `以下是 ${today} 各檔主動式ETF的持股異動摘要，請根據這些資料回答使用者問題。`,
+    ''
+  ];
+
+  for (const code of ETF_CODES) {
+    const latestDate = await getLatestDate(code);
+    if (!latestDate) continue;
+
+    const cfg = ETF_CONFIG[code];
+    const holdings = await getHoldings(code, latestDate);
+    if (!holdings.length) continue;
+
+    const dates = await getDates(code);
+    let added = [], removed = [], changed = [];
+    if (dates.length >= 2) {
+      const prev = await getHoldings(code, dates[dates.length - 2]);
+      ({ added, removed, changed } = diffHoldings(prev, holdings));
+    }
+
+    const actualTrades = changed.filter(s => s.shareDelta !== 0);
+    const drifted = changed.filter(s => s.shareDelta === 0 && s.shares > 0);
+
+    lines.push(`【${code} ${cfg.name}】共 ${holdings.length} 檔 (資料日期: ${latestDate})`);
+    if (added.length)
+      lines.push(`  新增: ${added.map(s => `${s.code}${s.name}(${s.percentage.toFixed(2)}%)`).join('、')}`);
+    if (removed.length)
+      lines.push(`  移除: ${removed.map(s => `${s.code}${s.name}`).join('、')}`);
+    if (actualTrades.length)
+      lines.push(`  調整持股: ${actualTrades.map(s =>
+        `${s.code}${s.name}(${s.shareDelta > 0 ? '+' : ''}${s.shareDelta?.toLocaleString()}股, ${s.delta > 0 ? '+' : ''}${s.delta.toFixed(2)}%)`
+      ).join('、')}`);
+    if (drifted.length)
+      lines.push(`  市價漂移（未交易）: ${drifted.map(s => `${s.code}${s.name}`).join('、')}`);
+    if (!added.length && !removed.length && !actualTrades.length)
+      lines.push(`  今日無異動`);
+    lines.push('');
+  }
+
+  return lines.join('\n');
 }

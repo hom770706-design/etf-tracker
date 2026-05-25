@@ -52,6 +52,7 @@
   <button class="tab" data-tab="industry">產業分布</button>
   <button class="tab" data-tab="stocks">股票分析</button>
   <button class="tab" data-tab="overlap">重疊分析</button>
+  <button class="tab" data-tab="ai">AI 分析</button>
 </nav>
 
 <!-- ── Content Panels ─────────────────────────────────────────────── -->
@@ -123,6 +124,16 @@
     </div>
   </section>
 
+  <!-- AI TAB -->
+  <section id="tab-ai" class="tab-panel">
+    <div id="chat-messages"></div>
+    <div class="chat-input-area">
+      <textarea id="chat-input" placeholder="問問今天的持股異動，例如：今天有哪些明顯的操作？" rows="2"></textarea>
+      <button id="chat-send" class="btn-primary">送出</button>
+    </div>
+    <div class="chat-footer-hint">AI 已自動載入今日持股異動資料 · <a id="chat-clear" href="#">清除對話</a></div>
+  </section>
+
 </main>
 
 <!-- ── Status Bar ─────────────────────────────────────────────────── -->
@@ -175,6 +186,8 @@
     </details>
     <label style="display:block;margin-top:12px;font-size:12px;color:var(--muted)">Apps Script 網頁應用程式 URL</label>
     <input type="url" id="settings-sheets-url" placeholder="https://script.google.com/macros/s/.../exec">
+    <label style="display:block;margin-top:12px;font-size:12px;color:var(--muted)">Groq API Key（AI 分析功能）</label>
+    <input type="password" id="settings-groq-key" placeholder="gsk_...">
     <div class="modal-actions">
       <button id="btn-settings-save" class="btn-primary">儲存</button>
       <button id="btn-settings-test" class="btn-secondary">測試連線</button>
