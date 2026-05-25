@@ -1040,9 +1040,14 @@ async function renderAI() {
   };
 
   const loadingEl = appendChatMsg('muted-msg', '載入今日持股資料中…');
-  const systemPrompt = await buildChatContext();
-  chatHistory.push({ role: 'system', content: systemPrompt });
-  loadingEl.textContent = 'AI 已載入今日 ETF 異動資料，可以開始提問';
+  try {
+    const systemPrompt = await buildChatContext();
+    chatHistory.push({ role: 'system', content: systemPrompt });
+    loadingEl.textContent = 'AI 已載入今日 ETF 異動資料，可以開始提問';
+  } catch (err) {
+    loadingEl.textContent = '資料載入失敗：' + err.message;
+    console.error('[ETF AI] buildChatContext 錯誤:', err);
+  }
   sendBtn.disabled = false;
   inputEl.focus();
 }
