@@ -13,12 +13,13 @@ chrome.runtime.onInstalled.addListener(() => scheduleAlarm());
 chrome.runtime.onStartup.addListener(() => scheduleAlarm());
 
 function scheduleAlarm() {
-  chrome.alarms.get(ALARM_NAME, existing => {
-    if (existing) return;
+  // 每次安裝/更新都重新設定，避免 reload 後 alarm 時間錯誤
+  chrome.alarms.clear(ALARM_NAME, () => {
     chrome.alarms.create(ALARM_NAME, {
       when: getNextFetchTime(),
       periodInMinutes: 24 * 60
     });
+    console.log(`[ETF Tracker] alarm 已設定，下次抓取: ${new Date(getNextFetchTime()).toLocaleString()}`);
   });
 }
 
@@ -83,7 +84,11 @@ async function openETFTabsForCollection(codesToFetch = ETF_CODES, isRetry = fals
 
   if (!isRetry) { try { await getOrRefreshIndustryMap(); } catch (_) {} }
 
-  await Promise.allSettled(codesToFetch.map(code => collectViaTab(code, today, results)));
+  // 每批最多 4 個，避免同時開太多 tab 拖垮瀏覽器
+  const BATCH = 4;
+  for (let i = 0; i < codesToFetch.length; i += BATCH) {
+    await Promise.allSettled(codesToFetch.slice(i, i + BATCH).map(code => collectViaTab(code, today, results)));
+  }
 
   await saveLastFetch({
     time: Date.now(),
