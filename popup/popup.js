@@ -1016,40 +1016,35 @@ let chatHistory = [];   // { role, content }[]
 let chatContextReady = false;
 
 async function renderAI() {
-  // 只在第一次進入 AI tab 時初始化（保留對話紀錄）
   const msgsEl = document.getElementById('chat-messages');
   if (chatContextReady) return;
 
-  msgsEl.innerHTML = '';
-  chatHistory = [];
   chatContextReady = true;
+  chatHistory = [];
+  msgsEl.innerHTML = '';
 
-  // 建立系統 prompt（今日持股異動摘要）
-  const systemPrompt = await buildChatContext();
-  chatHistory.push({ role: 'system', content: systemPrompt });
-
-  appendChatMsg('muted-msg', 'AI 已載入今日 ETF 異動資料，可以開始提問');
-
-  // 送出按鈕
+  // 先綁定事件，再做 async 資料載入
   const sendBtn = document.getElementById('chat-send');
   const inputEl = document.getElementById('chat-input');
-  const clearLink = document.getElementById('chat-clear');
 
-  // 移除舊的 listener（避免重複綁定）
-  const newSend = sendBtn.cloneNode(true);
-  sendBtn.parentNode.replaceChild(newSend, sendBtn);
-  const newInput = inputEl.cloneNode(true);
-  inputEl.parentNode.replaceChild(newInput, inputEl);
-
-  document.getElementById('chat-send').addEventListener('click', handleChatSend);
-  document.getElementById('chat-input').addEventListener('keydown', e => {
+  sendBtn.disabled = true;
+  sendBtn.addEventListener('click', handleChatSend);
+  inputEl.addEventListener('keydown', e => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleChatSend(); }
   });
-  clearLink.onclick = e => {
+  document.getElementById('chat-clear').onclick = e => {
     e.preventDefault();
     chatContextReady = false;
+    sendBtn.removeEventListener('click', handleChatSend);
     renderAI();
   };
+
+  const loadingEl = appendChatMsg('muted-msg', '載入今日持股資料中…');
+  const systemPrompt = await buildChatContext();
+  chatHistory.push({ role: 'system', content: systemPrompt });
+  loadingEl.textContent = 'AI 已載入今日 ETF 異動資料，可以開始提問';
+  sendBtn.disabled = false;
+  inputEl.focus();
 }
 
 async function handleChatSend() {
