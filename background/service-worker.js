@@ -12,6 +12,11 @@ const FETCH_HOUR  = 18;
 chrome.runtime.onInstalled.addListener(() => scheduleAlarm());
 chrome.runtime.onStartup.addListener(() => scheduleAlarm());
 
+// SW 被喚醒時（包含 alarm 觸發），確保排程存在
+chrome.alarms.get(ALARM_NAME, alarm => {
+  if (!alarm) scheduleAlarm();
+});
+
 function scheduleAlarm() {
   // 每次安裝/更新都重新設定，避免 reload 後 alarm 時間錯誤
   chrome.alarms.clear(ALARM_NAME, () => {

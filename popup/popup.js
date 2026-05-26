@@ -150,12 +150,24 @@ async function renderCurrentTab() {
 async function updateHeader() {
   const lastFetch = await getLastFetch();
   const el = document.getElementById('last-update');
+
+  let text = '';
   if (lastFetch) {
     const dt = new Date(lastFetch.time).toLocaleString('zh-TW', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
-    el.textContent = `最後更新: ${dt}`;
+    text = `最後更新: ${dt}`;
   } else {
-    el.textContent = '尚無資料 — 按 ⟳ 抓取';
+    text = '尚無資料 — 按 ⟳ 抓取';
   }
+
+  // 顯示下次自動抓取時間
+  chrome.alarms.get('daily-etf-fetch', alarm => {
+    if (alarm?.scheduledTime) {
+      const next = new Date(alarm.scheduledTime).toLocaleString('zh-TW', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+      el.textContent = `${text}　｜　下次自動更新: ${next}`;
+    } else {
+      el.textContent = `${text}　｜　排程未設定`;
+    }
+  });
 }
 
 // ── TODAY TAB ─────────────────────────────────────────────────────────
